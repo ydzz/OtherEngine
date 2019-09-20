@@ -1,0 +1,2 @@
+[workspace]
+members = ["game_core","file_system","game"]

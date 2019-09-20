@@ -1,0 +1,11 @@
+[package]
+name = "file_system"
+version = "0.1.0"
+authors = ["yangdao"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+quick-js = "0.2.3"
+game_core = {path = "../game_core"}
