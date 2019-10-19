@@ -1,10 +1,18 @@
 mod game_core;
 mod jsbinding;
+mod app;
+
+use app::{App};
 use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
 use std::cell::RefCell;
 use jsbinding::fs::init_fs_binding;
-extern crate winit;
 
+extern crate winit;
+fn main () {
+  let app = App::new();
+  app.run()
+}
+/*
 fn main() {
    let rt  = JSRuntime::new().unwrap();
    let ctx = JSContext::new(&rt).unwrap();
@@ -42,3 +50,4 @@ fn main() {
         });
    }
 }
+*/
