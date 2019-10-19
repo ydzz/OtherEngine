@@ -11,16 +11,16 @@ fn main() {
    let refcell = RefCell::new(ctx);
    init_internal(&refcell);
    init_fs_binding(&refcell);
-   
+
    let filecode = std::fs::read("main.js").unwrap();
    let str:String = String::from_utf8(filecode).unwrap();
    refcell.borrow().eval(&str, "main.js", EvalType::Module as i32);
-   
+
    //create window
    use glium::{glutin, Surface};
    let mut events_loop = glium::glutin::EventsLoop::new();
    let wb = glium::glutin::WindowBuilder::new();
-   
+
    let cb = glium::glutin::ContextBuilder::new();
    let display = glium::Display::new(wb, cb, &events_loop).unwrap();
 

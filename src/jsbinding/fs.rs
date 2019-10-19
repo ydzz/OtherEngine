@@ -38,15 +38,13 @@ pub extern "C" fn export_mkdir( ctx: *mut q::JSContext, _: q::JSValue, argc: ::s
           let bval = CJSValue::deserialize_value(arg_slice[1], ctx).unwrap();
           is_recursive = bval.as_bool();
        }
-       let mut is_succ = false;
        if is_recursive {
           let ret = fs::create_dir_all(path_str);
-          is_succ = ret.is_ok();
+          CJSValue::val_bool(ret.is_ok())
        } else {
           let ret = fs::create_dir(path_str);
-          is_succ = ret.is_ok();
-       };
-       if is_succ { CJSValue::val_bool(true) } else { CJSValue::val_bool(false) }      
+          CJSValue::val_bool(ret.is_ok())
+       }
 }
 
 pub extern "C" fn export_read_dir( ctx: *mut q::JSContext, _: q::JSValue, argc: ::std::os::raw::c_int, 
