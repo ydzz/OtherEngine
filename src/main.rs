@@ -1,15 +1,13 @@
 mod game_core;
-mod jsbinding;
+//mod jsbinding;
 mod app;
-
+mod win;
+mod graphics;
 use app::{App};
-use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
-use std::cell::RefCell;
-use jsbinding::fs::init_fs_binding;
 
-extern crate winit;
+//use jsbinding::fs::init_fs_binding;
 fn main () {
-  let app = App::new();
+  let mut app = App::new();
   app.run()
 }
 /*

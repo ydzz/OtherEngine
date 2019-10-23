@@ -5,10 +5,16 @@ authors = ["yangdao <458424869@qq.com>"]
 edition = "2018"
 
 [dependencies]
-qjs-rs = {path = "../qjs-rs"}
-winit = "0.19.3"
-glium = "*"
+#qjs-rs = {path = "../qjs-rs"}
+winit = "0.19.4"
+gfx = "0.18.2"
+gfx-backend-gl = { version = "0.3.0", optional = true}  
+gfx-hal = "0.3.1"
+glutin = "0.22.0-alpha3"
 
-[profile.release]
-opt-level = 'z'  # Optimize for size.
-lto = true
+#[profile.release]
+#opt-level = 'z'  # Optimize for size.
+#lto = true
+
+[features]
+default = ["gfx-backend-gl", "gfx-backend-gl/glutin"]
