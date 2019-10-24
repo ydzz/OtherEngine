@@ -11,6 +11,7 @@ gfx = "0.18.2"
 gfx-backend-gl = { version = "0.3.0", optional = true}  
 gfx-hal = "0.3.1"
 glutin = "0.22.0-alpha3"
+cgmath = "0.17.0"
 
 #[profile.release]
 #opt-level = 'z'  # Optimize for size.

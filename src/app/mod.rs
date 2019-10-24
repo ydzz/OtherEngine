@@ -17,7 +17,7 @@ impl App {
 
     let mut win = Win::new();
     let (surface,adapter) = win.init();
-    let  graphics = Graphics::new(surface,adapter);
+    let  graphics = Graphics::new(surface,adapter,win.get_winsize());
     App { window : win ,graphics : graphics /* js_rt:rt,js_ctx:ref_ctx*/ }
   }
 
@@ -32,8 +32,10 @@ impl App {
 */
  
   pub fn run(&mut self) {
-    //self.init_js_engine()
-    //self.window.run();
+    let ref_graphics = &mut self.graphics;
+    self.window.run(|newsize| {
+      ref_graphics.recreate_swapchain(newsize);
+    });
 
   }
 }

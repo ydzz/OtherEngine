@@ -5,7 +5,8 @@ use gfx_hal::{
   format::{AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle},
   window,
   Instance,
-  Adapter
+  Adapter,
+  window::Extent2D
 };
 
 use winit::dpi::LogicalSize;
@@ -13,19 +14,21 @@ use winit::dpi::LogicalSize;
 pub struct Win {
   event_loop:winit::EventsLoop,
   window:Option<winit::Window>,
+  winsize:Extent2D,
   title:String
 }
 
 impl Win {
  pub fn new() -> Self {
    let event_loop = winit::EventsLoop::new();
-   Win {event_loop : event_loop,window : None,title:String::from("winit") }
+  
+   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 320,height: 240} }
  }
 
  pub fn init(&mut self) -> (back::Surface,Adapter<back::Backend>) {
    let wb = winit::WindowBuilder::new()
         .with_min_dimensions(winit::dpi::LogicalSize::new(1.0, 1.0))
-        .with_dimensions(winit::dpi::LogicalSize::new(320_f64,240_f64))
+        .with_dimensions(winit::dpi::LogicalSize::new(self.winsize.width as f64,self.winsize.height as f64))
         .with_title(self.title.clone());
    let builder = back::config_context(back::glutin::ContextBuilder::new(),ColorFormat::SELF, None).with_vsync(true);
    let windowed_context = builder.build_windowed(wb, &self.event_loop).unwrap();
@@ -40,9 +43,16 @@ impl Win {
    (surface,adapter)
  }
 
- pub fn run(&mut self) {
+ pub fn get_winsize(&self) -> Extent2D {
+   self.winsize
+ }
+
+ pub fn run(&mut self,mut resize_fn: impl FnMut(Extent2D)) {
+  
    let mut running  = true;
-   //let mut recreate_swapchain = false;
+   let mut recreate_swapchain = false;
+   let mut resize_dims = Extent2D { width: 0, height: 0};
+
    while running  {
      self.event_loop.poll_events(|event| {
         if let winit::Event::WindowEvent { event, .. } = event { 
@@ -50,11 +60,23 @@ impl Win {
             winit::WindowEvent::CloseRequested => {
               running = false
             },
+            winit::WindowEvent::Resized(dims) => {
+              recreate_swapchain = true;
+              resize_dims.width = dims.width as u32;
+              resize_dims.height = dims.height as u32;
+              
+            },
             _ => ()
           }
         }
      });
-
+     if recreate_swapchain {
+       resize_fn(resize_dims);
+       recreate_swapchain = false;
+     }
    }
+   
+   
+
  }
 }
