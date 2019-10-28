@@ -68,7 +68,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
     println!("Memory types: {:?}", memory_types);
     let rc_device = Rc::new(RefCell::new(device));
-    let mut mesh_store =  MeshStore::new(Rc::clone(&rc_device),&memory_types);
+    let mesh_store =  MeshStore::new(Rc::clone(&rc_device),&memory_types);
     
     let (swapchain,format) = create_swapchain(winsize,&mut surface,&mut adapter,Rc::clone(&rc_device),None);
      Graphics {surface : surface, adapter : adapter, 
