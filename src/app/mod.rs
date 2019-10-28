@@ -1,11 +1,12 @@
 //use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
+extern crate gfx_backend_gl as back;
 use crate::win::{Win};
 use crate::graphics::{Graphics};
 //use crate::jsbinding::fs::init_fs_binding;
 pub struct App {
   //js_ctx:RefCell<JSContext>,
   //js_rt:JSRuntime
-  graphics:Graphics,
+  graphics:Graphics<back::Backend>,
   window:Win
 }
 
