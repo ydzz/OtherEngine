@@ -47,7 +47,7 @@ impl Win {
    self.winsize
  }
 
- pub fn run(&mut self,mut resize_fn: impl FnMut(Extent2D)) {
+ pub fn run(&mut self,mut resize_fn: impl FnMut(Extent2D),mut draw_fn:impl FnMut()) {
   
    let mut running  = true;
    let mut recreate_swapchain = false;
@@ -74,6 +74,7 @@ impl Win {
        resize_fn(resize_dims);
        recreate_swapchain = false;
      }
+     draw_fn();
    }
    
    

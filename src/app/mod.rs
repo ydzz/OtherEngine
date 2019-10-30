@@ -2,6 +2,7 @@
 extern crate gfx_backend_gl as back;
 use crate::win::{Win};
 use crate::graphics::{Graphics};
+use std::cell::{RefCell};
 //use crate::jsbinding::fs::init_fs_binding;
 pub struct App {
   //js_ctx:RefCell<JSContext>,
@@ -33,9 +34,12 @@ impl App {
 */
  
   pub fn run(&mut self) {
-    let ref_graphics = &mut self.graphics;
+    let refcell = RefCell::new(&mut self.graphics);
+    
     self.window.run(|newsize| {
-      ref_graphics.recreate_swapchain(newsize);
+      refcell.borrow_mut().recreate_swapchain(newsize);
+    },|| {
+      refcell.borrow_mut().draw();
     });
 
   }

@@ -1,6 +1,7 @@
 extern crate gfx_backend_gl as back;
-use crate::graphics::pipeline::{Pipeline};
+use crate::graphics::shader_store::{ShaderStore};
 use crate::graphics::mesh_store::{MeshStore};
+use crate::graphics::render_pass::{RenderPass};
 use std::rc::{Rc};
 use std::cell::{RefCell};
 use gfx_hal::format::{AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle};
@@ -29,13 +30,17 @@ pub struct Graphics<B:gfx_hal::Backend> {
   device:Rc<RefCell<B::Device>>,
   swap_chain:B::Swapchain,
   format:f::Format,
+  framebuffers:Option<Vec<B::Framebuffer>>,
+  frameimages:Option<Vec<(B::Image,B::ImageView)>>,
 
-  mesh_store:MeshStore<B>
+  mesh_store:MeshStore<B>,
+  shader_store:ShaderStore<B>,
+  default_pass:Rc<RenderPass<B>>
 }
 
 pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
-                        adapter:&mut Adapter<B>,device:Rc<RefCell<B::Device>>,may_format:Option<f::Format>)
-    -> (B::Swapchain,f::Format)       {
+                        adapter:&mut Adapter<B>,device:&RefCell<B::Device>,may_format:Option<f::Format>)
+    -> (B::Swapchain,f::Format,Vec<(B::Image,B::ImageView)>,gfx_hal::image::Extent)       {
    let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
    let format = may_format.or_else(|| {
        let format =  formats.map_or(f::Format::Rgba8Srgb, |formats| {
@@ -46,17 +51,16 @@ pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B:
     Some(format)
    });
    let swap_config = SwapchainConfig::from_caps(&caps, format.unwrap(), winsize);
-   
-   //let extent = swap_config.extent.to_extent();
+   let extent = swap_config.extent.to_extent();
   let (swapchain,backbuffer) = unsafe { device.borrow().create_swapchain(&mut surface, swap_config, None) }.expect("Can't create swapchain");
+  println!("len:{}",backbuffer.len());
   let pairs = backbuffer.into_iter().map(|image| unsafe {
               let rtv = device.borrow().create_image_view(&image, i::ViewKind::D2, format.unwrap(), Swizzle::NO, COLOR_RANGE.clone()).unwrap();
               (image,rtv)
             }).collect::<Vec<_>>();
-  //let fbos = pairs.iter().map(|&(_, ref rtv)| unsafe {});
-  //device.create_graphics_pipeline(desc: &pso::GraphicsPipelineDesc<'a, B>, _cache: Option<&()>)
   
-  (swapchain, format.unwrap())
+  
+  (swapchain, format.unwrap(),pairs,extent)
 }
 
 impl<B> Graphics<B> where B: gfx_hal::Backend {
@@ -68,22 +72,57 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
     println!("Memory types: {:?}", memory_types);
     let rc_device = Rc::new(RefCell::new(device));
+
     let mesh_store =  MeshStore::new(Rc::clone(&rc_device),&memory_types);
     
-    let (swapchain,format) = create_swapchain(winsize,&mut surface,&mut adapter,Rc::clone(&rc_device),None);
-     Graphics {surface : surface, adapter : adapter, 
-               device:rc_device, swap_chain : swapchain,format: format,
-               mesh_store : mesh_store
+    let (swapchain,format,images,extent) = create_swapchain(winsize,&mut surface,&mut adapter,&rc_device,None);
+    let render_pass = RenderPass::new_default_pass(format, Rc::clone(&rc_device));
+    let ref_render_pass = Rc::new(render_pass);
+    let mut shader_store = ShaderStore::new(Rc::clone(&rc_device),Rc::clone(&ref_render_pass));
+    shader_store.init_builtin_shader();
+
+    let fbos:Vec<B::Framebuffer> = images.iter().map(|&(_, ref rtv)| unsafe {
+                        rc_device.borrow().create_framebuffer(ref_render_pass.get_raw_pass(), Some(rtv), extent).unwrap()
+                    }).collect();
+    Graphics {
+               surface : surface, 
+               adapter : adapter,                
+               mesh_store : mesh_store,
+               shader_store : shader_store,
+               default_pass : ref_render_pass,
+               device:rc_device, 
+               swap_chain : swapchain,
+               format: format,
+               framebuffers : Some(fbos),
+               frameimages : Some(images)
               }
   }
 
   pub fn draw(&mut self) {
-    //self.swap_chain.acquire_image(_timeout_ns: u64, _semaphore: Option<&native::Semaphore>, _fence: Option<&native::Fence>)
+    let (image_idx,_) = unsafe { self.swap_chain.acquire_image(!0,None,None).unwrap() };
+    //println!("{}",image_idx);
   }
 
   pub fn recreate_swapchain(&mut self,newsize:Extent2D) {
+    unsafe {
+      let mut frames = self.framebuffers.take().unwrap();
+      let mut images = self.frameimages.take().unwrap();
+      for frame in frames {
+        self.device.borrow().destroy_framebuffer(frame);
+      }
+      for (_,imageview) in images {
+        self.device.borrow().destroy_image_view(imageview);
+      }
+    }
     self.device.borrow().wait_idle().unwrap();
-    let (swapchain,_) = create_swapchain(newsize,&mut self.surface,&mut self.adapter,Rc::clone(&self.device),Some(self.format));
+    let (swapchain, _ , images,extent) = create_swapchain(newsize,&mut self.surface,&mut self.adapter,&self.device,Some(self.format));
+    
+    let fbos:Vec<B::Framebuffer> = images.iter().map(|&(_, ref rtv)| unsafe {
+                        self.device.borrow().create_framebuffer(self.default_pass.get_raw_pass(), Some(rtv), extent).unwrap()
+                    }).collect();
+    
+    self.framebuffers = Some(fbos);
+    self.frameimages = Some(images);
     self.swap_chain = swapchain;
   }
 }

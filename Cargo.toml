@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["yangdao <458424869@qq.com>"]
 edition = "2018"
 
+
+
 [dependencies]
 #qjs-rs = {path = "../qjs-rs"}
 winit = "0.19.4"
@@ -12,6 +14,7 @@ gfx-backend-gl = { version = "0.3.0", optional = true}
 gfx-hal = "0.3.1"
 glutin = "0.22.0-alpha3"
 cgmath = "0.17.0"
+glsl-to-spirv = "0.1.7"
 
 #[profile.release]
 #opt-level = 'z'  # Optimize for size.
@@ -19,3 +22,4 @@ cgmath = "0.17.0"
 
 [features]
 default = ["gfx-backend-gl", "gfx-backend-gl/glutin"]
+
