@@ -5,4 +5,8 @@ pub mod gfx_helper;
 pub mod shader;
 pub mod shader_store;
 pub mod render_pass;
+pub mod render_node;
+pub mod mesh;
+pub mod material;
+pub mod render_queue;
 pub use graphics::Graphics;

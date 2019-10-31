@@ -2,13 +2,18 @@
 extern crate gfx_backend_gl as back;
 use crate::win::{Win};
 use crate::graphics::{Graphics};
+use crate::graphics::render_node::{RenderNode};
+use crate::graphics::material::{Material};
 use std::cell::{RefCell};
+use std::rc::{Rc};
+use trees::{tr};
+use trees::linked::fully::{Tree};
 //use crate::jsbinding::fs::init_fs_binding;
 pub struct App {
   //js_ctx:RefCell<JSContext>,
   //js_rt:JSRuntime
   graphics:Graphics<back::Backend>,
-  window:Win
+  window:Win,
 }
 
 impl App {
@@ -16,10 +21,13 @@ impl App {
     //let rt  = JSRuntime::new().unwrap();
     //let ctx = JSContext::new(&rt).unwrap();
     //let ref_ctx = RefCell::new(ctx);
-
     let mut win = Win::new();
+    let start = chrono::Local::now();
     let (surface,adapter) = win.init();
+    let end = chrono::Local::now();
+    println!("newapp {} ms",end.timestamp_millis() - start.timestamp_millis());
     let  graphics = Graphics::new(surface,adapter,win.get_winsize());
+    
     App { window : win ,graphics : graphics /* js_rt:rt,js_ctx:ref_ctx*/ }
   }
 
@@ -35,11 +43,24 @@ impl App {
  
   pub fn run(&mut self) {
     let refcell = RefCell::new(&mut self.graphics);
+    let rc_mesh = Rc::clone(&refcell.borrow().mesh_store.quad2d);
+    let rc_shader  = Rc::clone(refcell.borrow().shader_store.get_shader("UI")); 
+    let mut test_node = RenderNode { 
+      mesh :  rc_mesh,
+      material : Material {
+        shader : rc_shader
+      }
+    };
+    let tree:Tree<&RenderNode<back::Backend>> = tr(&test_node);
     
+    refcell.borrow_mut().draw(&tree);
     self.window.run(|newsize| {
-      refcell.borrow_mut().recreate_swapchain(newsize);
-    },|| {
-      refcell.borrow_mut().draw();
+      let (w,h) = refcell.borrow().get_winsize();
+      if w != newsize.width && h != newsize.height {
+       refcell.borrow_mut().recreate_swapchain(newsize);
+      }
+    },||{
+      refcell.borrow_mut().draw(&tree);
     });
 
   }

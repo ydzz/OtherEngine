@@ -22,7 +22,7 @@ impl Win {
  pub fn new() -> Self {
    let event_loop = winit::EventsLoop::new();
   
-   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 320,height: 240} }
+   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 10,height: 10} }
  }
 
  pub fn init(&mut self) -> (back::Surface,Adapter<back::Backend>) {
@@ -35,9 +35,7 @@ impl Win {
    let (context,window) = unsafe { windowed_context.make_current().expect("Unable to make context current").split() };
    let surface = back::Surface::from_context(context);
    let mut adapters = surface.enumerate_adapters();
-   for adapter in &adapters {
-        println!("{:?}", adapter.info);
-   }
+   
    let adapter = adapters.remove(0);
    self.window = Some(window);
    (surface,adapter)

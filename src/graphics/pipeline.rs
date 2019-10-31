@@ -9,6 +9,7 @@ pub struct Pipeline<B:hal::Backend> {
    pub desc_pool:B::DescriptorPool,
    pub desc_set_layout:B::DescriptorSetLayout,
    pub raw_pipeline:B::GraphicsPipeline,
+   pub pipeline_layout:B::PipelineLayout
 }
 
 impl<B> Pipeline<B> where B: hal::Backend {

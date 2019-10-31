@@ -2,8 +2,10 @@ extern crate gfx_backend_gl as back;
 use crate::graphics::shader_store::{ShaderStore};
 use crate::graphics::mesh_store::{MeshStore};
 use crate::graphics::render_pass::{RenderPass};
+use crate::graphics::render_node::{RenderNode};
 use std::rc::{Rc};
 use std::cell::{RefCell};
+use trees::linked::fully::{Tree};
 use gfx_hal::format::{AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle};
 use gfx_hal::pass::Subpass;
 use gfx_hal::pso::{PipelineStage, ShaderStageFlags, VertexInputRate};
@@ -18,9 +20,10 @@ use gfx_hal::{
     pool,
     pso,
     window::Extent2D,
+    queue,queue::family as qf
 };
 use gfx_hal::{DescriptorPool, Primitive, SwapchainConfig};
-use gfx_hal::{Device, Adapter,Instance, PhysicalDevice, Surface, Swapchain};
+use gfx_hal::{Device,Adapter,Instance, PhysicalDevice, Surface, Swapchain};
 
 
 pub struct Graphics<B:gfx_hal::Backend> {
@@ -33,9 +36,15 @@ pub struct Graphics<B:gfx_hal::Backend> {
   framebuffers:Option<Vec<B::Framebuffer>>,
   frameimages:Option<Vec<(B::Image,B::ImageView)>>,
 
-  mesh_store:MeshStore<B>,
-  shader_store:ShaderStore<B>,
-  default_pass:Rc<RenderPass<B>>
+  pub mesh_store:MeshStore<B>,
+  pub shader_store:ShaderStore<B>,
+  default_pass:Rc<RenderPass<B>>,
+  command_pool:pool::CommandPool<B,queue::capability::Graphics>,
+  command_buffer:command::CommandBuffer<B,queue::capability::Graphics,command::MultiShot>,
+  viewport : pso::Viewport,
+  queue_group : qf::QueueGroup<B,queue::capability::Graphics>,
+
+  submission_complete_semaphores:B::Semaphore
 }
 
 pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
@@ -65,6 +74,7 @@ pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B:
 
 impl<B> Graphics<B> where B: gfx_hal::Backend {
   pub fn new(mut surface:B::Surface,mut adapter:Adapter<B>,winsize:Extent2D) -> Self {
+    //let start = chrono::Local::now();
     let memory_types = adapter.physical_device.memory_properties().memory_types;
     let (mut device, queue_group) = adapter
                                         .open_with::<_, gfx_hal::Graphics>(1, |family| surface.supports_queue_family(family))
@@ -84,6 +94,15 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let fbos:Vec<B::Framebuffer> = images.iter().map(|&(_, ref rtv)| unsafe {
                         rc_device.borrow().create_framebuffer(ref_render_pass.get_raw_pass(), Some(rtv), extent).unwrap()
                     }).collect();
+
+    let command_buffer = command_pool.acquire_command_buffer::<command::MultiShot>();
+    let viewport = pso::Viewport { 
+                     rect: pso::Rect { x: 0, y: 0, w: extent.width as _, h: extent.height as _,},
+                     depth: 0.0 .. 1.0
+                   };
+    let submission_complete_semaphores = rc_device.borrow().create_semaphore().expect("Could not create semaphore");
+    //let end = chrono::Local::now();
+    //println!("new graphics {} ms",end.timestamp_millis() - start.timestamp_millis());
     Graphics {
                surface : surface, 
                adapter : adapter,                
@@ -94,13 +113,52 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                swap_chain : swapchain,
                format: format,
                framebuffers : Some(fbos),
-               frameimages : Some(images)
+               frameimages : Some(images),
+               command_pool : command_pool,
+               command_buffer : command_buffer,
+               viewport : viewport,
+               queue_group : queue_group,
+               submission_complete_semaphores : submission_complete_semaphores
               }
   }
 
-  pub fn draw(&mut self) {
+  pub fn draw(&mut self,render_node:&Tree<&RenderNode<B>>) {
+    
+    //let start = chrono::Local::now();
     let (image_idx,_) = unsafe { self.swap_chain.acquire_image(!0,None,None).unwrap() };
+    unsafe {
+      let  pipeline = &self.shader_store.get_shader("UI").pipelines[0];
+      //let desc_set = pipeline.create_desc_set();
+      self.command_buffer.begin(false);
+      self.command_buffer.set_viewports(0, &[self.viewport.clone()]);
+      self.command_buffer.set_scissors(0, &[self.viewport.rect]);
+      self.command_buffer.bind_graphics_pipeline(&pipeline.raw_pipeline);
+      self.command_buffer.bind_vertex_buffers(0, Some((self.mesh_store.get_quad2d().get_raw_buffer(), 0)));
+      let aaa  = self.framebuffers.as_ref().unwrap();
+      //self.command_buffer.bind_graphics_descriptor_sets(&pipeline.pipeline_layout, 0, Some(&desc_set), &[]);
+      {
+                let mut encoder = self.command_buffer.begin_render_pass_inline(
+                    self.default_pass.get_raw_pass(),
+                    &aaa[0],
+                    self.viewport.rect,
+                    &[command::ClearValue::Color(command::ClearColor::Sfloat([
+                        0.8, 0.8, 0.8, 1.0,
+                    ]))],
+                );
+                encoder.draw(0 .. 6, 0 .. 1);
+      }
+      self.command_buffer.finish();
+      //let submission = Submission { command_buffers : self.command_buffer,wait_semaphores:None, signal_semaphores : None };
+      self.queue_group.queues[0].submit_without_semaphores(Some(&self.command_buffer), None);
+      self.swap_chain.present(&mut self.queue_group.queues[0],image_idx as gfx_hal::SwapImageIndex,Some(&self.submission_complete_semaphores));
+    }
     //println!("{}",image_idx);
+    //let end = chrono::Local::now();
+    //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
+  }
+
+  pub fn draw_queue(&mut self) {
+
   }
 
   pub fn recreate_swapchain(&mut self,newsize:Extent2D) {
@@ -124,6 +182,10 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     self.framebuffers = Some(fbos);
     self.frameimages = Some(images);
     self.swap_chain = swapchain;
+  }
+
+  pub fn get_winsize(&self) -> (u32,u32)   {
+    (self.viewport.rect.w as u32,self.viewport.rect.h as u32)
   }
 }
 

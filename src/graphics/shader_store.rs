@@ -7,9 +7,8 @@ use std::rc::{Rc};
 use std::cell::{RefCell};
 use gfx_hal::{device::{Device},pso,pso::{VertexInputRate}, pass,pass::Subpass,Primitive,format as f};
 extern crate glsl_to_spirv;
-
 pub struct ShaderStore<B:gfx_hal::Backend> {
-  shaders:HashMap<String,Shader<B>>,
+  shaders:HashMap<String,Rc<Shader<B>>>,
   device:Rc<RefCell<B::Device>>,
   render_pass:Rc<RenderPass<B>>
 }
@@ -25,7 +24,11 @@ impl<B> ShaderStore<B> where B:gfx_hal::Backend {
 
     pub fn init_builtin_shader(&mut self) {
       let ui_shader = self.create_ui_builtin_shader();
-      self.shaders.insert(String::from("UI"), ui_shader);
+      self.shaders.insert(String::from("UI"), Rc::new(ui_shader));
+    }
+
+    pub fn get_shader(&self,shader_name:&str) -> &Rc<Shader<B>> {
+      self.shaders.get(shader_name).unwrap()
     }
 
 
@@ -94,7 +97,8 @@ impl<B> ShaderStore<B> where B:gfx_hal::Backend {
    device:Rc::clone(&self.device),
    desc_pool:desc_pool,
    desc_set_layout:desc_set_layout,
-   raw_pipeline:raw_pipeline
+   raw_pipeline:raw_pipeline,
+   pipeline_layout : pipeline_layout
   };
 
   Shader { pipelines:vec!(pipeline) }
