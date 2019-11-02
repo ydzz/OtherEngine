@@ -6,8 +6,6 @@ use crate::graphics::render_node::{RenderNode};
 use crate::graphics::material::{Material};
 use std::cell::{RefCell};
 use std::rc::{Rc};
-use trees::{tr};
-use trees::linked::fully::{Tree};
 //use crate::jsbinding::fs::init_fs_binding;
 pub struct App {
   //js_ctx:RefCell<JSContext>,
@@ -44,23 +42,20 @@ impl App {
   pub fn run(&mut self) {
     let refcell = RefCell::new(&mut self.graphics);
     let rc_mesh = Rc::clone(&refcell.borrow().mesh_store.quad2d);
-    let rc_shader  = Rc::clone(refcell.borrow().shader_store.get_shader("UI")); 
-    let mut test_node = RenderNode { 
+    let test_node = RenderNode { 
       mesh :  rc_mesh,
-      material : Material {
-        shader : rc_shader
-      }
+      material : Rc::new(Material::new(&refcell.borrow().shader_store,String::from( "UI")))
     };
-    let tree:Tree<&RenderNode<back::Backend>> = tr(&test_node);
+   let vec = vec!(&test_node);
     
-    refcell.borrow_mut().draw(&tree);
+    refcell.borrow_mut().draw(&vec);
     self.window.run(|newsize| {
       let (w,h) = refcell.borrow().get_winsize();
       if w != newsize.width && h != newsize.height {
        refcell.borrow_mut().recreate_swapchain(newsize);
       }
     },||{
-      refcell.borrow_mut().draw(&tree);
+      refcell.borrow_mut().draw(&vec);
     });
 
   }

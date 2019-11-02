@@ -36,5 +36,5 @@ fn create_quad2d_mesh<B:gfx_hal::Backend>(device:&Rc<RefCell<B::Device>>,memory_
                                  Vertex2 {a_pos: [0.5, -0.5],a_uv: [1.0, 0.0]},
                                  Vertex2 {a_pos: [-0.5, -0.5],a_uv: [0.0, 0.0]}];
     let buffer = unsafe { BufferState::new::<Vertex2>(Rc::clone(&device),&quad2d, buffer::Usage::VERTEX,memory_types) };
-    Mesh {buffer : buffer }
+    Mesh {vertex_count: 6, buffer : buffer }
   }

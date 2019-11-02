@@ -1,5 +1,6 @@
 use crate::graphics::gfx_helper::{BufferState};
 pub struct Mesh<B:gfx_hal::Backend> {
+  pub vertex_count:u32,
   pub buffer:BufferState<B>
 }
 

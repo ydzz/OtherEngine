@@ -3,9 +3,9 @@ use crate::graphics::shader_store::{ShaderStore};
 use crate::graphics::mesh_store::{MeshStore};
 use crate::graphics::render_pass::{RenderPass};
 use crate::graphics::render_node::{RenderNode};
+use crate::graphics::render_queue::{QueueType,RenderQueue};
 use std::rc::{Rc};
-use std::cell::{RefCell};
-use trees::linked::fully::{Tree};
+use std::cell::{Ref,RefCell};
 use gfx_hal::format::{AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle};
 use gfx_hal::pass::Subpass;
 use gfx_hal::pso::{PipelineStage, ShaderStageFlags, VertexInputRate};
@@ -37,14 +37,17 @@ pub struct Graphics<B:gfx_hal::Backend> {
   frameimages:Option<Vec<(B::Image,B::ImageView)>>,
 
   pub mesh_store:MeshStore<B>,
-  pub shader_store:ShaderStore<B>,
+  pub shader_store:Rc<ShaderStore<B>>,
   default_pass:Rc<RenderPass<B>>,
   command_pool:pool::CommandPool<B,queue::capability::Graphics>,
-  command_buffer:command::CommandBuffer<B,queue::capability::Graphics,command::MultiShot>,
+  command_buffer:RefCell< command::CommandBuffer<B,queue::capability::Graphics,command::MultiShot> >,
   viewport : pso::Viewport,
-  queue_group : qf::QueueGroup<B,queue::capability::Graphics>,
+  queue_group :RefCell< qf::QueueGroup<B,queue::capability::Graphics>>,
 
-  submission_complete_semaphores:B::Semaphore
+  submission_complete_semaphores:B::Semaphore,
+
+  geometry_queue   :RenderQueue<B>,
+  transparent_queue:RenderQueue<B>
 }
 
 pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
@@ -107,7 +110,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                surface : surface, 
                adapter : adapter,                
                mesh_store : mesh_store,
-               shader_store : shader_store,
+               shader_store : Rc::new(shader_store),
                default_pass : ref_render_pass,
                device:rc_device, 
                swap_chain : swapchain,
@@ -115,50 +118,75 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                framebuffers : Some(fbos),
                frameimages : Some(images),
                command_pool : command_pool,
-               command_buffer : command_buffer,
+               command_buffer : RefCell::new(command_buffer),
                viewport : viewport,
-               queue_group : queue_group,
-               submission_complete_semaphores : submission_complete_semaphores
+               queue_group : RefCell::new(queue_group),
+               submission_complete_semaphores : submission_complete_semaphores,
+               transparent_queue:RenderQueue::new(),
+               geometry_queue:RenderQueue::new()
               }
   }
 
-  pub fn draw(&mut self,render_node:&Tree<&RenderNode<B>>) {
+  pub fn draw(&mut self,lst_node:&Vec<&RenderNode<B>>) {
+    let start = chrono::Local::now();
+    self.geometry_queue.clear();
+    self.transparent_queue.clear();
     
-    //let start = chrono::Local::now();
     let (image_idx,_) = unsafe { self.swap_chain.acquire_image(!0,None,None).unwrap() };
-    unsafe {
-      let  pipeline = &self.shader_store.get_shader("UI").pipelines[0];
-      //let desc_set = pipeline.create_desc_set();
-      self.command_buffer.begin(false);
-      self.command_buffer.set_viewports(0, &[self.viewport.clone()]);
-      self.command_buffer.set_scissors(0, &[self.viewport.rect]);
-      self.command_buffer.bind_graphics_pipeline(&pipeline.raw_pipeline);
-      self.command_buffer.bind_vertex_buffers(0, Some((self.mesh_store.get_quad2d().get_raw_buffer(), 0)));
-      let aaa  = self.framebuffers.as_ref().unwrap();
-      //self.command_buffer.bind_graphics_descriptor_sets(&pipeline.pipeline_layout, 0, Some(&desc_set), &[]);
-      {
-                let mut encoder = self.command_buffer.begin_render_pass_inline(
+    self.pick_nodes_to_queue(lst_node);
+    self.draw_queue(&self.geometry_queue);
+    self.draw_queue(&self.transparent_queue);
+    unsafe { self.swap_chain.present(&mut self.queue_group.borrow_mut().queues[0],image_idx as gfx_hal::SwapImageIndex,Some(&self.submission_complete_semaphores)).unwrap(); }
+    let end = chrono::Local::now();
+    //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
+  }
+
+  pub fn pick_nodes_to_queue(&mut self,nodes:&Vec<&RenderNode<B>>) {
+     for i in 0..nodes.len()  {
+       let cur_node = nodes[i];
+       match cur_node.material.get_shader_rc().queue_type {
+         QueueType::Geometry => self.geometry_queue.push_node(&cur_node),
+         QueueType::Transparent => self.transparent_queue.push_node(&cur_node)
+       }
+     }
+  }
+
+  pub fn draw_queue(&self,queue:&RenderQueue<B>) {
+    let framebuffers  = self.framebuffers.as_ref().unwrap();
+    for shader in queue.shaders.borrow().iter() {
+       let pipeline = &shader.pipelines[0];
+       for material in queue.meterials.borrow().iter() {
+         if material.get_shader_rc().id != shader.id { continue }
+         for i in 0..queue.meshes.borrow().len() {
+           let owend_mat_id = queue.get_mesh_material_by_idx(i);
+           if owend_mat_id != material.id { continue }
+           unsafe {
+             let mesh = &queue.meshes.borrow()[i];
+             self.command_buffer.borrow_mut().begin(false);
+             self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
+             self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
+             self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
+             self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
+             {
+               self.command_buffer.borrow_mut().begin_render_pass_inline(
                     self.default_pass.get_raw_pass(),
-                    &aaa[0],
+                    &framebuffers[0],
                     self.viewport.rect,
                     &[command::ClearValue::Color(command::ClearColor::Sfloat([
                         0.8, 0.8, 0.8, 1.0,
                     ]))],
-                );
-                encoder.draw(0 .. 6, 0 .. 1);
-      }
-      self.command_buffer.finish();
-      //let submission = Submission { command_buffers : self.command_buffer,wait_semaphores:None, signal_semaphores : None };
-      self.queue_group.queues[0].submit_without_semaphores(Some(&self.command_buffer), None);
-      self.swap_chain.present(&mut self.queue_group.queues[0],image_idx as gfx_hal::SwapImageIndex,Some(&self.submission_complete_semaphores));
+                ).draw(0 .. mesh.vertex_count, 0 .. 3);
+             }
+             self.command_buffer.borrow_mut().finish();
+             let ques = &mut self.queue_group.borrow_mut().queues;
+             Ref::map(self.command_buffer.borrow(), |mi| { 
+               ques[0].submit_without_semaphores(Some(mi),None);
+               mi
+             });
+           }
+         }
+       }
     }
-    //println!("{}",image_idx);
-    //let end = chrono::Local::now();
-    //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
-  }
-
-  pub fn draw_queue(&mut self) {
-
   }
 
   pub fn recreate_swapchain(&mut self,newsize:Extent2D) {

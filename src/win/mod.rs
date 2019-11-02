@@ -22,7 +22,7 @@ impl Win {
  pub fn new() -> Self {
    let event_loop = winit::EventsLoop::new();
   
-   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 10,height: 10} }
+   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 320,height: 240} }
  }
 
  pub fn init(&mut self) -> (back::Surface,Adapter<back::Backend>) {
