@@ -42,9 +42,9 @@ impl<B> RenderQueue<B> where B:gfx_hal::Backend {
   }
 
   pub fn push_node(&self,node:&RenderNode<B>) {
-    if !self.shader_dic.borrow().contains_key(&node.material.get_shader_rc().id) {
-      self.shaders.borrow_mut().push(Rc::clone(node.material.get_shader_rc()));
-      self.shader_dic.borrow_mut().insert(node.material.get_shader_rc().id,self.shaders.borrow().len() - 1);
+    if !self.shader_dic.borrow().contains_key(&node.material.get_shader().id) {
+      self.shaders.borrow_mut().push(Rc::clone(node.material.get_shader()));
+      self.shader_dic.borrow_mut().insert(node.material.get_shader().id,self.shaders.borrow().len() - 1);
     }
     if !self.material_dic.borrow().contains_key(&node.material.id) {
       self.meterials.borrow_mut().push(Rc::clone(&node.material) );

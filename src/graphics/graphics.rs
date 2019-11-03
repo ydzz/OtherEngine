@@ -5,6 +5,7 @@ use crate::graphics::render_pass::{RenderPass};
 use crate::graphics::render_node::{RenderNode};
 use crate::graphics::render_queue::{QueueType,RenderQueue};
 use std::rc::{Rc};
+use std::{iter};
 use std::cell::{Ref,RefCell};
 use gfx_hal::format::{AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle};
 use gfx_hal::pass::Subpass;
@@ -23,14 +24,14 @@ use gfx_hal::{
     queue,queue::family as qf
 };
 use gfx_hal::{DescriptorPool, Primitive, SwapchainConfig};
-use gfx_hal::{Device,Adapter,Instance, PhysicalDevice, Surface, Swapchain};
+use gfx_hal::{Device,Adapter,adapter::{MemoryType},Instance, PhysicalDevice, Surface, Swapchain};
 
 
 pub struct Graphics<B:gfx_hal::Backend> {
   surface:B::Surface,
-  adapter:Adapter<B>,
-
-  device:Rc<RefCell<B::Device>>,
+  pub adapter:Adapter<B>,
+  pub memory_types:Vec<MemoryType>,
+  pub device:Rc<RefCell<B::Device>>,
   swap_chain:B::Swapchain,
   format:f::Format,
   framebuffers:Option<Vec<B::Framebuffer>>,
@@ -39,10 +40,10 @@ pub struct Graphics<B:gfx_hal::Backend> {
   pub mesh_store:MeshStore<B>,
   pub shader_store:Rc<ShaderStore<B>>,
   default_pass:Rc<RenderPass<B>>,
-  command_pool:pool::CommandPool<B,queue::capability::Graphics>,
+  pub command_pool:pool::CommandPool<B,queue::capability::Graphics>,
   command_buffer:RefCell< command::CommandBuffer<B,queue::capability::Graphics,command::MultiShot> >,
   viewport : pso::Viewport,
-  queue_group :RefCell< qf::QueueGroup<B,queue::capability::Graphics>>,
+  pub queue_group :RefCell< qf::QueueGroup<B,queue::capability::Graphics>>,
 
   submission_complete_semaphores:B::Semaphore,
 
@@ -108,7 +109,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     //println!("new graphics {} ms",end.timestamp_millis() - start.timestamp_millis());
     Graphics {
                surface : surface, 
-               adapter : adapter,                
+               adapter : adapter,
+               memory_types : memory_types,                
                mesh_store : mesh_store,
                shader_store : Rc::new(shader_store),
                default_pass : ref_render_pass,
@@ -144,7 +146,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
   pub fn pick_nodes_to_queue(&mut self,nodes:&Vec<&RenderNode<B>>) {
      for i in 0..nodes.len()  {
        let cur_node = nodes[i];
-       match cur_node.material.get_shader_rc().queue_type {
+       match cur_node.material.get_shader().queue_type {
          QueueType::Geometry => self.geometry_queue.push_node(&cur_node),
          QueueType::Transparent => self.transparent_queue.push_node(&cur_node)
        }
@@ -156,7 +158,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     for shader in queue.shaders.borrow().iter() {
        let pipeline = &shader.pipelines[0];
        for material in queue.meterials.borrow().iter() {
-         if material.get_shader_rc().id != shader.id { continue }
+         if material.get_shader().id != shader.id { continue }
          for i in 0..queue.meshes.borrow().len() {
            let owend_mat_id = queue.get_mesh_material_by_idx(i);
            if owend_mat_id != material.id { continue }
@@ -165,6 +167,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
              self.command_buffer.borrow_mut().begin(false);
              self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
              self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
+             self.command_buffer.borrow_mut()
+                                .bind_graphics_descriptor_sets(&pipeline.pipeline_layout,0,iter::once(material.get_desc()),&[]);
              self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
              self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
              {
@@ -218,7 +222,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
 }
 
 
-const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
+pub const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
     aspects: f::Aspects::COLOR,
     levels: 0 .. 1,
     layers: 0 .. 1,

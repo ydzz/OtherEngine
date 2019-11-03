@@ -143,7 +143,7 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
     }
     let pipeline: Pipeline<B> = Pipeline {
       device: Rc::clone(&self.device),
-      desc_pool: desc_pool,
+      desc_pool: RefCell::new(desc_pool),
       desc_set_layout: desc_set_layout,
       raw_pipeline: raw_pipeline,
       pipeline_layout: pipeline_layout,

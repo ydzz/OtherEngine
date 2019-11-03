@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 #qjs-rs = {path = "../qjs-rs"}
+image = "0.22.3"
 winit = "0.19.4"
 gfx = "0.18.2"
 gfx-backend-gl = { version = "0.3.0", optional = true}  

@@ -9,4 +9,5 @@ pub mod render_node;
 pub mod mesh;
 pub mod material;
 pub mod render_queue;
+pub mod texture;
 pub use graphics::Graphics;

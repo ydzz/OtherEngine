@@ -1,6 +1,7 @@
 extern crate gfx_backend_gl as back;
 use std::mem::{size_of, ManuallyDrop};
 use std::{fs, iter, ptr};
+use image::GenericImageView;
 use gfx_hal::{ Backend,
                device::{Device}, 
                buffer, 
@@ -68,5 +69,39 @@ impl<B: Backend> BufferState<B> {
        device: device_ptr,
        size
     }
+  }
+
+  pub unsafe fn new_texture(device:&Rc<RefCell<B::Device>>,dynimage:&image::DynamicImage,memory_types: &[MemoryType]) -> (BufferState<B>,u32) {
+    let (width,height) = dynimage.dimensions();
+    let row_alignment_mask = 0;
+    let image_stride = 4usize;
+    let row_pitch = (width * image_stride as u32 + row_alignment_mask) & !row_alignment_mask;
+    let upload_size = (height * row_pitch) as u64;
+
+    let mut image_upload_buffer = device.borrow_mut().create_buffer(upload_size, buffer::Usage::TRANSFER_SRC).unwrap();
+    let image_mem_reqs = device.borrow().get_buffer_requirements(&image_upload_buffer);
+    let upload_type = memory_types.iter().enumerate().position(|(id, mem_type)| {
+                              image_mem_reqs.type_mask & (1 << id) != 0 && mem_type.properties.contains(m::Properties::CPU_VISIBLE)
+                         }).unwrap().into();
+    let image_upload_memory = device.borrow().allocate_memory(upload_type, image_mem_reqs.size).unwrap();
+    device.borrow_mut().bind_buffer_memory(&image_upload_memory, 0, &mut image_upload_buffer).unwrap();
+    
+    let mut data_target = device.borrow().acquire_mapping_writer(&image_upload_memory,0..image_mem_reqs.size).unwrap();
+    let img = &dynimage.to_rgba();
+    println!("{:?},len:{}",img.dimensions(),img.len());
+    
+    for y in 0 .. height as usize {
+      let data_source_slice = &(**img)[y * (width as usize) * image_stride .. (y + 1) * (width as usize) * image_stride];
+      let dest_base = y * row_pitch as usize;
+      data_target[dest_base .. dest_base + data_source_slice.len()].copy_from_slice(data_source_slice);
+    }
+    device.borrow_mut().release_mapping_writer(data_target).unwrap();
+
+    (BufferState {
+      memory : Some(image_upload_memory),
+      buffer : Some(image_upload_buffer),
+      size : upload_size,
+      device : Rc::clone(device)
+    },row_pitch)
   }
 }

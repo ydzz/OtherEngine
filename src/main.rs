@@ -7,7 +7,7 @@ use app::{App};
 
 //use jsbinding::fs::init_fs_binding;
 fn main () {
-  let mut app = App::new();
+  let app = App::new();
   app.run()
 }
 /*
