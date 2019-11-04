@@ -61,13 +61,12 @@ fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> Rende
     let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad2d);
     let start0 = chrono::Local::now();
     let mut tex = Texture::load_by_path("resource/logo.png");
-    
     tex.to_gpu(&graphics);
     let end = chrono::Local::now();
     println!("to gpu {} ms",end.timestamp_millis() - start0.timestamp_millis());
     
     
-    let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"));
+    let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
     mat.set_main_texture(tex);
     
     

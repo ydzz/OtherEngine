@@ -51,31 +51,6 @@ pub struct Graphics<B:gfx_hal::Backend> {
   transparent_queue:RenderQueue<B>
 }
 
-pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
-                        adapter:&mut Adapter<B>,device:&RefCell<B::Device>,may_format:Option<f::Format>)
-    -> (B::Swapchain,f::Format,Vec<(B::Image,B::ImageView)>,gfx_hal::image::Extent)       {
-   let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
-   let format = may_format.or_else(|| {
-       let format =  formats.map_or(f::Format::Rgba8Srgb, |formats| {
-        formats.iter().find(|format| format.base_format().1 == ChannelType::Srgb)
-                      .map(|format| *format)
-                      .unwrap_or(formats[0])
-    });
-    Some(format)
-   });
-   let swap_config = SwapchainConfig::from_caps(&caps, format.unwrap(), winsize);
-   let extent = swap_config.extent.to_extent();
-  let (swapchain,backbuffer) = unsafe { device.borrow().create_swapchain(&mut surface, swap_config, None) }.expect("Can't create swapchain");
-  println!("len:{}",backbuffer.len());
-  let pairs = backbuffer.into_iter().map(|image| unsafe {
-              let rtv = device.borrow().create_image_view(&image, i::ViewKind::D2, format.unwrap(), Swizzle::NO, COLOR_RANGE.clone()).unwrap();
-              (image,rtv)
-            }).collect::<Vec<_>>();
-  
-  
-  (swapchain, format.unwrap(),pairs,extent)
-}
-
 impl<B> Graphics<B> where B: gfx_hal::Backend {
   pub fn new(mut surface:B::Surface,mut adapter:Adapter<B>,winsize:Extent2D) -> Self {
     //let start = chrono::Local::now();
@@ -221,6 +196,30 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
   }
 }
 
+pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
+                        adapter:&mut Adapter<B>,device:&RefCell<B::Device>,may_format:Option<f::Format>)
+    -> (B::Swapchain,f::Format,Vec<(B::Image,B::ImageView)>,gfx_hal::image::Extent)       {
+   let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
+   let format = may_format.or_else(|| {
+       let format =  formats.map_or(f::Format::Rgba8Srgb, |formats| {
+        formats.iter().find(|format| format.base_format().1 == ChannelType::Srgb)
+                      .map(|format| *format)
+                      .unwrap_or(formats[0])
+    });
+    Some(format)
+   });
+   let swap_config = SwapchainConfig::from_caps(&caps, format.unwrap(), winsize);
+   let extent = swap_config.extent.to_extent();
+  let (swapchain,backbuffer) = unsafe { device.borrow().create_swapchain(&mut surface, swap_config, None) }.expect("Can't create swapchain");
+  println!("len:{}",backbuffer.len());
+  let pairs = backbuffer.into_iter().map(|image| unsafe {
+              let rtv = device.borrow().create_image_view(&image, i::ViewKind::D2, format.unwrap(), Swizzle::NO, COLOR_RANGE.clone()).unwrap();
+              (image,rtv)
+            }).collect::<Vec<_>>();
+  
+  
+  (swapchain, format.unwrap(),pairs,extent)
+}
 
 pub const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
     aspects: f::Aspects::COLOR,

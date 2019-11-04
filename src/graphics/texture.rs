@@ -27,6 +27,14 @@ impl<B> Texture<B> where B:gfx_hal::Backend {
     Texture {image : img , buffer:None,image_view:None,sampler:None }
   }
 
+  pub fn get_image_view_ref(&self) -> &B::ImageView {
+    self.image_view.as_ref().unwrap()
+  }
+
+  pub fn get_sampler_ref(&self) -> &B::Sampler {
+    self.sampler.as_ref().unwrap()
+  }
+
   pub fn to_gpu(&mut self,gp:&RefCell<Graphics<B>>) {
     let (buffer,row_pitch) = unsafe { BufferState::new_texture(&gp.borrow().device,&self.image,&gp.borrow().memory_types) };
     self.buffer = Some(buffer);
