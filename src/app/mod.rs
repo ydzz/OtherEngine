@@ -69,8 +69,8 @@ fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> Rende
     let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
     mat.set_main_texture(tex);
     
-    
-    RenderNode { 
+    RenderNode {
+      mat:nalgebra::one(),
       mesh :  rc_mesh,
       material : Rc::new(mat)
     }
