@@ -4,6 +4,7 @@ use crate::graphics::mesh_store::{MeshStore};
 use crate::graphics::render_pass::{RenderPass};
 use crate::graphics::render_node::{RenderNode};
 use crate::graphics::render_queue::{QueueType,RenderQueue};
+use crate::graphics::gfx_helper::{DescSetLayout};
 use std::rc::{Rc};
 use std::{iter};
 use std::cell::{Ref,RefCell};
@@ -48,14 +49,16 @@ pub struct Graphics<B:gfx_hal::Backend> {
   submission_complete_semaphores:B::Semaphore,
 
   geometry_queue   :RenderQueue<B>,
-  transparent_queue:RenderQueue<B>
+  transparent_queue:RenderQueue<B>,
+
+  worldmvp_layout : DescSetLayout<B>
 }
 
 impl<B> Graphics<B> where B: gfx_hal::Backend {
   pub fn new(mut surface:B::Surface,mut adapter:Adapter<B>,winsize:Extent2D) -> Self {
     //let start = chrono::Local::now();
     let memory_types = adapter.physical_device.memory_properties().memory_types;
-    let (mut device, queue_group) = adapter
+    let (device, queue_group) = adapter
                                         .open_with::<_, gfx_hal::Graphics>(1, |family| surface.supports_queue_family(family))
                                         .unwrap();
     let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
@@ -82,6 +85,13 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let submission_complete_semaphores = rc_device.borrow().create_semaphore().expect("Could not create semaphore");
     //let end = chrono::Local::now();
     //println!("new graphics {} ms",end.timestamp_millis() - start.timestamp_millis());
+    let worldmvp_layout = DescSetLayout::new(Rc::clone(&rc_device),vec![pso::DescriptorSetLayoutBinding {
+                binding: 0,
+                ty: pso::DescriptorType::UniformBuffer,
+                count: 1,
+                stage_flags: pso::ShaderStageFlags::FRAGMENT,
+                immutable_samplers: false,
+            }] );
     Graphics {
                surface : surface, 
                adapter : adapter,
@@ -100,7 +110,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                queue_group : RefCell::new(queue_group),
                submission_complete_semaphores : submission_complete_semaphores,
                transparent_queue:RenderQueue::new(),
-               geometry_queue:RenderQueue::new()
+               geometry_queue:RenderQueue::new(),
+               worldmvp_layout : worldmvp_layout 
               }
   }
 

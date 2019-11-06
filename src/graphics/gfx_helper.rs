@@ -1,12 +1,14 @@
 extern crate gfx_backend_gl as back;
 use std::mem::{size_of, ManuallyDrop};
-use std::{fs, iter, ptr};
+use std::{iter, ptr};
 use image::GenericImageView;
 use gfx_hal::{ Backend,
                device::{Device}, 
                buffer, 
                adapter::{Adapter, MemoryType},
-               memory as m
+               memory as m,
+               pso,
+               DescriptorPool
              };
 use std::rc::{Rc};
 use std::cell::{RefCell};
@@ -104,4 +106,41 @@ impl<B: Backend> BufferState<B> {
       device : Rc::clone(device)
     },row_pitch)
   }
+}
+
+pub struct DescSetLayout<B: Backend> {
+  layout: Option<B::DescriptorSetLayout>,
+  pool: Option<B::DescriptorPool>,
+  device: Rc<RefCell<B::Device>>
+}
+
+impl<B>  DescSetLayout<B> where B:Backend {
+  pub  fn new(device:Rc<RefCell<B::Device>>, bindings: Vec<pso::DescriptorSetLayoutBinding>) -> Self {
+    unsafe {
+      let pools:Vec<pso::DescriptorRangeDesc> = bindings.iter().map(|binding| pso::DescriptorRangeDesc {
+        ty : binding.ty,
+        count : 1
+      }).collect();
+      let desc_set_layout = device.borrow().create_descriptor_set_layout(bindings, &[]).ok();
+      let pool = device.borrow().create_descriptor_pool(1,pools,pso::DescriptorPoolCreateFlags::empty()).ok();
+      DescSetLayout {
+            layout: desc_set_layout,
+            device,
+            pool: pool
+      }
+    }
+  }
+
+  pub fn create_desc_set(&mut self) -> B::DescriptorSet {
+    unsafe { self.pool.as_mut().unwrap().allocate_set(self.layout.as_ref().unwrap()).unwrap() }
+  }
+}
+
+impl<B: Backend> Drop for DescSetLayout<B> {
+    fn drop(&mut self) {
+        unsafe {
+          self.device.borrow().destroy_descriptor_set_layout(self.layout.take().unwrap());
+          self.device.borrow().destroy_descriptor_pool(self.pool.take().unwrap());
+        }
+    }
 }
