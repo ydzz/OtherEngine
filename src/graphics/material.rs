@@ -15,7 +15,7 @@ pub struct Material<B:hal::Backend> {
 
 impl<B> Material<B> where B:hal::Backend {
   pub fn new(shader:&Rc<Shader<B>>,device:&Rc<RefCell<B::Device>>) -> Self {
-    let pipeline = &shader.pipelines[0];
+    let  pipeline = &shader.pipelines[0];
     let desc_set = pipeline.create_desc_set();
     
     Material {

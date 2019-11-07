@@ -130,7 +130,9 @@ impl<B>  DescSetLayout<B> where B:Backend {
       }
     }
   }
-
+  pub fn raw_layout(&self) -> &B::DescriptorSetLayout {
+    self.layout.as_ref().unwrap()
+  }
   pub fn create_desc_set(&mut self) -> B::DescriptorSet {
     unsafe { self.pool.as_mut().unwrap().allocate_set(self.layout.as_ref().unwrap()).unwrap() }
   }

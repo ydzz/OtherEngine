@@ -3,18 +3,18 @@ use gfx_hal as hal;
 use std::rc::{Rc};
 use std::cell::{RefCell};
 use gfx_hal::pso::{DescriptorPool};
+use crate::graphics::gfx_helper::{DescSetLayout};
 
 pub struct Pipeline<B:hal::Backend> {
    pub device:Rc<RefCell<B::Device>>,
-   pub desc_pool:RefCell<B::DescriptorPool>,
-   pub desc_set_layout:B::DescriptorSetLayout,
    pub raw_pipeline:B::GraphicsPipeline,
-   pub pipeline_layout:B::PipelineLayout
+   pub pipeline_layout:B::PipelineLayout,
+   pub desc_set_layout:RefCell<DescSetLayout<B>>
 }
 
 impl<B> Pipeline<B> where B: hal::Backend {
   pub fn create_desc_set(&self) -> B::DescriptorSet {
-    unsafe { self.desc_pool.borrow_mut().allocate_set(&self.desc_set_layout) }.unwrap()
+    self.desc_set_layout.borrow_mut().create_desc_set()
   }
 }
 

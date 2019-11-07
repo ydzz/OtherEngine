@@ -1,4 +1,4 @@
-use crate::graphics::gfx_helper::Vertex2;
+use crate::graphics::gfx_helper::{Vertex2,DescSetLayout};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::render_pass::RenderPass;
 use crate::graphics::render_queue::QueueType;
@@ -37,36 +37,15 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
     self.shaders.get(shader_name).unwrap()
   }
 
-  pub fn create_shader_pipeline_desc(&self,shader_name:String) {
-
-  }
 
   fn create_ui_builtin_shader(&self) -> Shader<B> {
-    let desc_set_layout = unsafe {
-      self
-        .device
-        .borrow()
-        .create_descriptor_set_layout(&[], &[])
-        .expect("Can't create descriptor set layout")
-    };
-    let desc_pool = unsafe {
-      self
-        .device
-        .borrow()
-        .create_descriptor_pool(0, &[], pso::DescriptorPoolCreateFlags::empty())
-        .expect("Can't create descriptor pool")
-    };
+    let desc_set_layout = DescSetLayout::new(Rc::clone(&self.device),vec!());
     let pipeline_layout = unsafe {
-      self
-        .device
-        .borrow()
-        .create_pipeline_layout(
-          std::iter::once(&desc_set_layout),
+      self.device.borrow().create_pipeline_layout(
+          std::iter::once(desc_set_layout.raw_layout()),
           &[(pso::ShaderStageFlags::VERTEX, 0..8)],
-        )
-        .unwrap()
+        ).unwrap()
     };
-
     let vert_code = compile_glsl_shader("resource/shader/ui.vert", glsl_to_spirv::ShaderType::Vertex).unwrap();
     let frag_code = compile_glsl_shader("resource/shader/ui.frag", glsl_to_spirv::ShaderType::Fragment).unwrap();
     let vs_module = unsafe { self.device.borrow().create_shader_module(&vert_code).unwrap() };
@@ -143,8 +122,7 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
     }
     let pipeline: Pipeline<B> = Pipeline {
       device: Rc::clone(&self.device),
-      desc_pool: RefCell::new(desc_pool),
-      desc_set_layout: desc_set_layout,
+      desc_set_layout: RefCell::new(desc_set_layout),
       raw_pipeline: raw_pipeline,
       pipeline_layout: pipeline_layout,
     };
