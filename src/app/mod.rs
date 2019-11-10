@@ -58,7 +58,7 @@ impl App {
 
 fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> RenderNode<B> {
     
-    let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad2d);
+    let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad);
     let start0 = chrono::Local::now();
     let mut tex = Texture::load_by_path("resource/logo.png");
     tex.to_gpu(&graphics);

@@ -1,10 +1,12 @@
 extern crate gfx_backend_gl as back;
+extern crate alga;
+extern crate nalgebra as na;
 use crate::graphics::shader_store::{ShaderStore};
 use crate::graphics::mesh_store::{MeshStore};
 use crate::graphics::render_pass::{RenderPass};
 use crate::graphics::render_node::{RenderNode};
 use crate::graphics::render_queue::{QueueType,RenderQueue};
-use crate::graphics::gfx_helper::{DescSetLayout};
+use crate::graphics::gfx_helper::{DescSetLayout,Uniform};
 use std::rc::{Rc};
 use std::{iter};
 use std::cell::{Ref,RefCell};
@@ -51,10 +53,12 @@ pub struct Graphics<B:gfx_hal::Backend> {
   geometry_queue   :RenderQueue<B>,
   transparent_queue:RenderQueue<B>,
 
-  worldmvp_layout : DescSetLayout<B>
+  worldmvp_layout : RefCell<DescSetLayout<B>>,
+  wolrdmvp_uniform:Uniform<B>
 }
 
 impl<B> Graphics<B> where B: gfx_hal::Backend {
+
   pub fn new(mut surface:B::Surface,mut adapter:Adapter<B>,winsize:Extent2D) -> Self {
     //let start = chrono::Local::now();
     let memory_types = adapter.physical_device.memory_properties().memory_types;
@@ -64,42 +68,49 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
     println!("Memory types: {:?}", memory_types);
     let rc_device = Rc::new(RefCell::new(device));
+    let proj = nalgebra::Perspective3::new(16.0 / 9.0, 3.14 / 2.0, 1.0, 1000.0);
+    println!("{:?}",proj);
+    let model_mat:nalgebra::Transform3<f32> = nalgebra::Transform3::identity();
+    println!("{:?}",model_mat);
+    let mut mvp =  proj.as_matrix();
+    println!("{:?}",mvp);
+
+    
+    let mut worldmvp_layout = Graphics::create_mvp_layout(&rc_device);
+    let wolrdmvp_uniform = Uniform::new(&rc_device,&memory_types,
+                                        mvp.as_slice(),
+                                        worldmvp_layout.create_desc_set(), 0);
+
 
     let mesh_store =  MeshStore::new(Rc::clone(&rc_device),&memory_types);
-    
+
     let (swapchain,format,images,extent) = create_swapchain(winsize,&mut surface,&mut adapter,&rc_device,None);
     let render_pass = RenderPass::new_default_pass(format, Rc::clone(&rc_device));
     let ref_render_pass = Rc::new(render_pass);
     let mut shader_store = ShaderStore::new(Rc::clone(&rc_device),Rc::clone(&ref_render_pass));
-    shader_store.init_builtin_shader();
-
+    shader_store.init_builtin_shader(&worldmvp_layout);
+    
     let fbos:Vec<B::Framebuffer> = images.iter().map(|&(_, ref rtv)| unsafe {
                         rc_device.borrow().create_framebuffer(ref_render_pass.get_raw_pass(), Some(rtv), extent).unwrap()
                     }).collect();
 
     let command_buffer = command_pool.acquire_command_buffer::<command::MultiShot>();
-    let viewport = pso::Viewport { 
+    let viewport = pso::Viewport {
                      rect: pso::Rect { x: 0, y: 0, w: extent.width as _, h: extent.height as _,},
                      depth: 0.0 .. 1.0
                    };
     let submission_complete_semaphores = rc_device.borrow().create_semaphore().expect("Could not create semaphore");
     //let end = chrono::Local::now();
     //println!("new graphics {} ms",end.timestamp_millis() - start.timestamp_millis());
-    let worldmvp_layout = DescSetLayout::new(Rc::clone(&rc_device),vec![pso::DescriptorSetLayoutBinding {
-                binding: 0,
-                ty: pso::DescriptorType::UniformBuffer,
-                count: 1,
-                stage_flags: pso::ShaderStageFlags::FRAGMENT,
-                immutable_samplers: false,
-            }] );
+    
     Graphics {
-               surface : surface, 
+               surface : surface,
                adapter : adapter,
-               memory_types : memory_types,                
+               memory_types : memory_types,
                mesh_store : mesh_store,
                shader_store : Rc::new(shader_store),
                default_pass : ref_render_pass,
-               device:rc_device, 
+               device:rc_device,
                swap_chain : swapchain,
                format: format,
                framebuffers : Some(fbos),
@@ -111,8 +122,19 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                submission_complete_semaphores : submission_complete_semaphores,
                transparent_queue:RenderQueue::new(),
                geometry_queue:RenderQueue::new(),
-               worldmvp_layout : worldmvp_layout 
+               worldmvp_layout : RefCell::new(worldmvp_layout),
+               wolrdmvp_uniform : wolrdmvp_uniform
               }
+  }
+
+  fn create_mvp_layout(device:&Rc<RefCell<B::Device>>) -> DescSetLayout<B> {
+    DescSetLayout::new(Rc::clone(device),vec![pso::DescriptorSetLayoutBinding {
+                binding: 0,
+                ty: pso::DescriptorType::UniformBuffer,
+                count: 1,
+                stage_flags: pso::ShaderStageFlags::VERTEX,
+                immutable_samplers: false,
+            }] )
   }
 
   pub fn draw(&mut self,lst_node:&Vec<&RenderNode<B>>) {
@@ -154,7 +176,11 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
              self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
              self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
              self.command_buffer.borrow_mut()
-                                .bind_graphics_descriptor_sets(&pipeline.pipeline_layout,0,iter::once(material.get_desc()),&[]);
+                                .bind_graphics_descriptor_sets(
+                                  &pipeline.pipeline_layout,
+                                  0,
+                                  vec![self.wolrdmvp_uniform.raw_desc_set(),material.get_desc_set()],
+                                  &[]);
              self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
              self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
              {

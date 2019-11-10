@@ -1,4 +1,4 @@
-use crate::graphics::gfx_helper::{Vertex2,DescSetLayout};
+use crate::graphics::gfx_helper::{Vertex3,DescSetLayout};
 use crate::graphics::pipeline::Pipeline;
 use crate::graphics::render_pass::RenderPass;
 use crate::graphics::render_queue::QueueType;
@@ -26,11 +26,9 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
     }
   }
 
-  pub fn init_builtin_shader(&mut self) {
-    let ui_shader = self.create_ui_builtin_shader();
-    self
-      .shaders
-      .insert(ui_shader.name.clone(), Rc::new(ui_shader));
+  pub fn init_builtin_shader(&mut self,mvp_layout:&DescSetLayout<B>) {
+    let ui_shader = self.create_ui_builtin_shader(mvp_layout);
+    self.shaders.insert(ui_shader.name.clone(), Rc::new(ui_shader));
   }
 
   pub fn get_shader(&self, shader_name: &str) -> &Rc<Shader<B>> {
@@ -38,11 +36,26 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
   }
 
 
-  fn create_ui_builtin_shader(&self) -> Shader<B> {
-    let desc_set_layout = DescSetLayout::new(Rc::clone(&self.device),vec!());
+  fn create_ui_builtin_shader(&self,mvp_layout:&DescSetLayout<B>) -> Shader<B> {
+    let desc_set_layout = DescSetLayout::new(Rc::clone(&self.device),vec![
+      pso::DescriptorSetLayoutBinding {
+                    binding: 0,
+                    ty: pso::DescriptorType::SampledImage,
+                    count: 1,
+                    stage_flags: pso::ShaderStageFlags::FRAGMENT,
+                    immutable_samplers: false,
+                },
+      pso::DescriptorSetLayoutBinding {
+                    binding: 1,
+                    ty: pso::DescriptorType::Sampler,
+                    count: 1,
+                    stage_flags: pso::ShaderStageFlags::FRAGMENT,
+                    immutable_samplers: false,
+      }
+    ]);
     let pipeline_layout = unsafe {
       self.device.borrow().create_pipeline_layout(
-          std::iter::once(desc_set_layout.raw_layout()),
+          vec![mvp_layout.raw_layout(),desc_set_layout.raw_layout()],
           &[(pso::ShaderStageFlags::VERTEX, 0..8)],
         ).unwrap()
     };
@@ -86,10 +99,10 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
 
     pipeline_desc.vertex_buffers.push(pso::VertexBufferDesc {
       binding: 0,
-      stride: std::mem::size_of::<Vertex2>() as u32,
+      stride: std::mem::size_of::<Vertex3>() as u32,
       rate: VertexInputRate::Vertex,
     });
-
+   
     pipeline_desc.attributes.push(pso::AttributeDesc {
       location: 0,
       binding: 0,
@@ -103,7 +116,7 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
       binding: 0,
       element: pso::Element {
         format: f::Format::Rg32Sfloat,
-        offset: 8,
+        offset: 12,
       },
     });
     let raw_pipeline = unsafe {

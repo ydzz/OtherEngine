@@ -36,7 +36,7 @@ impl<B> Material<B> where B:hal::Backend {
     unsafe { self.update_desc_set(); }
   }
 
-  pub fn get_desc(&self) -> &B::DescriptorSet {
+  pub fn get_desc_set(&self) -> &B::DescriptorSet {
     &self.desc_set
   }
 

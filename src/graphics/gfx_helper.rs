@@ -14,14 +14,14 @@ use std::rc::{Rc};
 use std::cell::{RefCell};
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex2 {
-  pub a_pos: [f32; 2],
+  pub  a_pos: [f32; 2],
   pub  a_uv:  [f32; 2]
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex3 {
-    a_pos: [f32; 3],
-    a_uv:  [f32; 2]
+  pub  a_pos: [f32; 3],
+  pub  a_uv:  [f32; 2]
 }
 
 pub struct BufferState<B: Backend> {
@@ -145,4 +145,40 @@ impl<B: Backend> Drop for DescSetLayout<B> {
           self.device.borrow().destroy_descriptor_pool(self.pool.take().unwrap());
         }
     }
+}
+
+pub struct Uniform<B: Backend> {
+    buffer: Option<BufferState<B>>,
+    desc_set: Option<B::DescriptorSet>,
+}
+
+impl<B: Backend> Uniform<B> {
+  pub fn new<T>(device:&Rc<RefCell<B::Device>>,
+                memory_types: &[MemoryType],
+                data: &[T],
+                mut desc_set: B::DescriptorSet,
+                binding:u32) -> Self where T : Copy {
+    unsafe {
+        let buffer = BufferState::new(
+            Rc::clone(device),
+            &data,
+            buffer::Usage::UNIFORM,
+            memory_types,
+        );
+        let buffer = Some(buffer);
+        device.borrow_mut().write_descriptor_sets(vec![
+          pso::DescriptorSetWrite { 
+            set: &desc_set,
+            binding: binding,
+            array_offset: 0,
+            descriptors: Some(pso::Descriptor::Buffer(buffer.as_ref().unwrap().get_buffer(),None .. None))
+          }
+        ]);
+        Uniform {buffer:buffer , desc_set:Some(desc_set) }
+    }
+  }
+
+  pub fn raw_desc_set(&self) -> &B::DescriptorSet {
+    self.desc_set.as_ref().unwrap()
+  }
 }

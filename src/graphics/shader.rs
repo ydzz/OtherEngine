@@ -38,7 +38,7 @@ pub fn compile_glsl_shader(file_path:&str,shader_type:glsl_to_spirv::ShaderType)
         v8.write_u32::<LittleEndian>(*n).unwrap();
    }
    
-   std::fs::write(&spv_path, v8).unwrap();
+   //std::fs::write(&spv_path, v8).unwrap();
    Ok(spv)
 }
 
