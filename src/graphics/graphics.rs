@@ -7,6 +7,8 @@ use crate::graphics::render_pass::{RenderPass};
 use crate::graphics::render_node::{RenderNode};
 use crate::graphics::render_queue::{QueueType,RenderQueue};
 use crate::graphics::gfx_helper::{DescSetLayout,Uniform};
+use crate::graphics::camera::{Orthographic};
+use crate::graphics::camera::{Camera};
 use std::rc::{Rc};
 use std::{iter};
 use std::cell::{Ref,RefCell};
@@ -54,7 +56,7 @@ pub struct Graphics<B:gfx_hal::Backend> {
   transparent_queue:RenderQueue<B>,
 
   worldmvp_layout : RefCell<DescSetLayout<B>>,
-  wolrdmvp_uniform:Uniform<B>
+  wolrdmvp_uniform:RefCell<Uniform<B>>
 }
 
 impl<B> Graphics<B> where B: gfx_hal::Backend {
@@ -68,17 +70,13 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
     println!("Memory types: {:?}", memory_types);
     let rc_device = Rc::new(RefCell::new(device));
-    let proj = nalgebra::Perspective3::new(16.0 / 9.0, 3.14 / 2.0, 1.0, 1000.0);
-    println!("{:?}",proj);
-    let model_mat:nalgebra::Transform3<f32> = nalgebra::Transform3::identity();
-    println!("{:?}",model_mat);
-    let mut mvp =  proj.as_matrix();
-    println!("{:?}",mvp);
+    
 
     
     let mut worldmvp_layout = Graphics::create_mvp_layout(&rc_device);
+    let mat:na::Matrix4<f32> = na::Matrix4::identity();
     let wolrdmvp_uniform = Uniform::new(&rc_device,&memory_types,
-                                        mvp.as_slice(),
+                                        mat.as_slice(),
                                         worldmvp_layout.create_desc_set(), 0);
 
 
@@ -123,7 +121,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                transparent_queue:RenderQueue::new(),
                geometry_queue:RenderQueue::new(),
                worldmvp_layout : RefCell::new(worldmvp_layout),
-               wolrdmvp_uniform : wolrdmvp_uniform
+               wolrdmvp_uniform : RefCell::new(wolrdmvp_uniform)
               }
   }
 
@@ -137,15 +135,17 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
             }] )
   }
 
-  pub fn draw(&mut self,lst_node:&Vec<&RenderNode<B>>) {
+  pub fn draw(&mut self,cameras:&Vec<Camera>,lst_node:&Vec<&RenderNode<B>>) {
     let start = chrono::Local::now();
     self.geometry_queue.clear();
     self.transparent_queue.clear();
     
     let (image_idx,_) = unsafe { self.swap_chain.acquire_image(!0,None,None).unwrap() };
     self.pick_nodes_to_queue(lst_node);
-    self.draw_queue(&self.geometry_queue);
-    self.draw_queue(&self.transparent_queue);
+    for cam in cameras {
+      self.draw_queue(cam,&self.geometry_queue);
+      self.draw_queue(cam,&self.transparent_queue);
+    }
     unsafe { self.swap_chain.present(&mut self.queue_group.borrow_mut().queues[0],image_idx as gfx_hal::SwapImageIndex,Some(&self.submission_complete_semaphores)).unwrap(); }
     let end = chrono::Local::now();
     //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
@@ -161,7 +161,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
      }
   }
 
-  pub fn draw_queue(&self,queue:&RenderQueue<B>) {
+  pub fn draw_queue(&self,cam:&Camera,queue:&RenderQueue<B>) {
     let framebuffers  = self.framebuffers.as_ref().unwrap();
     for shader in queue.shaders.borrow().iter() {
        let pipeline = &shader.pipelines[0];
@@ -172,6 +172,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
            if owend_mat_id != material.id { continue }
            unsafe {
              let mesh = &queue.meshes.borrow()[i];
+             let mvp_mat4 =  cam.p_matrix() * cam.view_matrix() * &queue.mesh_mat4.borrow()[i];
+             self.wolrdmvp_uniform.borrow_mut().buffer.as_mut().unwrap().update(0,mvp_mat4.as_slice());
              self.command_buffer.borrow_mut().begin(false);
              self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
              self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
@@ -179,7 +181,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                                 .bind_graphics_descriptor_sets(
                                   &pipeline.pipeline_layout,
                                   0,
-                                  vec![self.wolrdmvp_uniform.raw_desc_set(),material.get_desc_set()],
+                                  vec![self.wolrdmvp_uniform.borrow().raw_desc_set(),material.get_desc_set()],
                                   &[]);
              self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
              self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));

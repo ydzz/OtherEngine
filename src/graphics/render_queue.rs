@@ -1,6 +1,7 @@
 use std::collections::{HashMap,HashSet};
 use crate::graphics::shader::{Shader};
 use crate::graphics::material::{Material};
+use nalgebra::{Matrix4};
 use crate::graphics::mesh::{Mesh};
 use crate::graphics::render_node::{RenderNode};
 use std::cell::{RefCell};
@@ -17,7 +18,8 @@ pub struct RenderQueue<B:gfx_hal::Backend> {
 
    pub shaders:RefCell<Vec<Rc<Shader<B>>>>,
    pub meterials:RefCell<Vec<Rc<Material<B>>>>,
-   pub meshes:RefCell<Vec<Rc<Mesh<B>>>>
+   pub meshes:RefCell<Vec<Rc<Mesh<B>>>>,
+   pub mesh_mat4:RefCell<Vec<Matrix4<f32>>>
 }
 
 impl<B> RenderQueue<B> where B:gfx_hal::Backend {
@@ -28,7 +30,8 @@ impl<B> RenderQueue<B> where B:gfx_hal::Backend {
         mesh_dic:RefCell::new(HashMap::new()),
         shaders:RefCell::new(Vec::new()),
         meterials:RefCell::new(Vec::new()),
-        meshes:RefCell::new(Vec::new())
+        meshes:RefCell::new(Vec::new()),
+        mesh_mat4:RefCell::new(Vec::new())
       }
   }
 
@@ -39,6 +42,7 @@ impl<B> RenderQueue<B> where B:gfx_hal::Backend {
     self.shaders.borrow_mut().clear();
     self.meterials.borrow_mut().clear();
     self.meshes.borrow_mut().clear();
+    self.mesh_mat4.borrow_mut().clear();
   }
 
   pub fn push_node(&self,node:&RenderNode<B>) {
@@ -52,6 +56,7 @@ impl<B> RenderQueue<B> where B:gfx_hal::Backend {
     }
     self.meshes.borrow_mut().push(Rc::clone(&node.mesh));
     self.mesh_dic.borrow_mut().insert(self.meshes.borrow().len() - 1, node.material.id);
+    self.mesh_mat4.borrow_mut().insert(self.meshes.borrow().len() - 1, node.transform.matrix());
   }
 
   pub fn get_mesh_material_by_idx(&self,idx:usize) -> u128 {

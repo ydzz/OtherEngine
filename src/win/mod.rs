@@ -14,7 +14,7 @@ use winit::dpi::LogicalSize;
 pub struct Win {
   event_loop:winit::EventsLoop,
   window:Option<winit::Window>,
-  winsize:Extent2D,
+  pub winsize:Extent2D,
   title:String
 }
 
@@ -22,7 +22,7 @@ impl Win {
  pub fn new() -> Self {
    let event_loop = winit::EventsLoop::new();
   
-   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 1024,height: 768} }
+   Win {event_loop : event_loop,window : None,title:String::from("winit"),winsize : Extent2D {width: 320,height: 240} }
  }
 
  pub fn init(&mut self) -> (back::Surface,Adapter<back::Backend>) {

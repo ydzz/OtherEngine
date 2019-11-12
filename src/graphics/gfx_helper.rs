@@ -106,6 +106,18 @@ impl<B: Backend> BufferState<B> {
       device : Rc::clone(device)
     },row_pitch)
   }
+
+  pub fn update<T>(&mut self, offset: u64, data_source: &[T]) where T : Copy {
+    let stride = size_of::<T>();
+    let upload_size = data_source.len() * stride;
+    assert!(offset + upload_size as u64 <= self.size);
+    let memory = self.memory.as_ref().unwrap();
+    unsafe {
+      let mapping = self.device.borrow().map_memory(memory, offset .. self.size).unwrap();
+      ptr::copy_nonoverlapping(data_source.as_ptr() as *const u8, mapping, upload_size);
+      self.device.borrow().unmap_memory(memory);
+    }
+  }
 }
 
 pub struct DescSetLayout<B: Backend> {
@@ -148,7 +160,7 @@ impl<B: Backend> Drop for DescSetLayout<B> {
 }
 
 pub struct Uniform<B: Backend> {
-    buffer: Option<BufferState<B>>,
+    pub buffer: Option<BufferState<B>>,
     desc_set: Option<B::DescriptorSet>,
 }
 

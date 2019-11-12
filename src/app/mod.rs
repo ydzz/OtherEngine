@@ -3,15 +3,20 @@ extern crate gfx_backend_gl as back;
 use crate::win::{Win};
 use crate::graphics::{Graphics};
 use crate::graphics::render_node::{RenderNode};
+use crate::graphics::transform::{Transform};
 use crate::graphics::material::{Material};
 use crate::graphics::texture::{Texture};
+use crate::graphics::camera::{Camera};
+use crate::game::{Game};
 use std::cell::{RefCell};
 use std::rc::{Rc};
+use alga;
+use nalgebra::{Vector3,Isometry3,Translation3,Matrix4};
 //use crate::jsbinding::fs::init_fs_binding;
 pub struct App {
   //js_ctx:RefCell<JSContext>,
   //js_rt:JSRuntime
-  graphics:RefCell<Graphics<back::Backend>>,
+  game:RefCell<Game<back::Backend>>,
   window:RefCell<Win>,
 }
 
@@ -26,7 +31,8 @@ impl App {
     let end = chrono::Local::now();
     println!("newapp {} ms",end.timestamp_millis() - start.timestamp_millis());
     let  graphics = Graphics::new(surface,adapter,win.get_winsize());
-    App { window : RefCell::new(win),graphics : RefCell::new(graphics) /* js_rt:rt,js_ctx:ref_ctx*/ }
+    let  game = Game::new(graphics);
+    App { window : RefCell::new(win), game : RefCell::new(game)  /* js_rt:rt,js_ctx:ref_ctx*/ }
   }
 
 /*
@@ -39,19 +45,20 @@ impl App {
   }
 */
  
-  pub fn run(&self) {
-    
-    let test_node = create_test_node(&self.graphics);
-    let vec = vec!(&test_node); 
+  pub fn run(&mut self) {
+    //let test_node = create_test_node(&self.graphics);
+    let size = self.window.borrow().get_winsize();
+    let camera = Camera::standard_2d(size.width as f32, size.height as f32);
+    self.game.borrow_mut().add_camera(camera);
+  
 
-    self.graphics.borrow_mut().draw(&vec);
+
+
     self.window.borrow_mut().run(|newsize| {
-      let (w,h) = self.graphics.borrow().get_winsize();
-      if w != newsize.width && h != newsize.height {
-       self.graphics.borrow_mut().recreate_swapchain(newsize);
-      }
+      self.game.borrow().resize_view(newsize);
     },||{
-      self.graphics.borrow_mut().draw(&vec);
+      self.game.borrow().update();
+
     });
   }
 }
@@ -61,16 +68,20 @@ fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> Rende
     let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad);
     let start0 = chrono::Local::now();
     let mut tex = Texture::load_by_path("resource/logo.png");
-    tex.to_gpu(&graphics);
+    
     let end = chrono::Local::now();
     println!("to gpu {} ms",end.timestamp_millis() - start0.timestamp_millis());
-    
+    tex.to_gpu(&graphics);
     
     let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
     mat.set_main_texture(tex);
+    let mut node_t = Transform::identity();
+    node_t.set_scale(Vector3::new(100f32,100f32,100f32));
+    node_t.matrix();
     
+   
     RenderNode {
-      mat:nalgebra::one(),
+      transform:node_t,
       mesh :  rc_mesh,
       material : Rc::new(mat)
     }
