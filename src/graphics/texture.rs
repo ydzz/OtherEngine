@@ -1,9 +1,8 @@
 extern crate gfx_backend_gl as back;
 use std::cell::{RefCell};
 use std::rc::{Rc};
-use crate::graphics::{Graphics};
 use crate::graphics::gfx_helper::{BufferState};
-use crate::graphics::graphics::{COLOR_RANGE};
+use crate::graphics::graphics::{COLOR_RANGE,Graphics};
 use gfx_hal::{image as i,
               format::{AsFormat,Rgba8Srgb,Swizzle},device::{Device},
               memory as m,command,

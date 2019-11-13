@@ -56,7 +56,7 @@ impl<B> RenderQueue<B> where B:gfx_hal::Backend {
     }
     self.meshes.borrow_mut().push(Rc::clone(&node.mesh));
     self.mesh_dic.borrow_mut().insert(self.meshes.borrow().len() - 1, node.material.id);
-    self.mesh_mat4.borrow_mut().insert(self.meshes.borrow().len() - 1, node.transform.matrix());
+    self.mesh_mat4.borrow_mut().insert(self.meshes.borrow().len() - 1, node.mat4);
   }
 
   pub fn get_mesh_material_by_idx(&self,idx:usize) -> u128 {

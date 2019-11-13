@@ -1,15 +1,21 @@
-pub mod graphics;
+extern crate gfx_backend_gl as back;
+mod graphics;
 pub mod pipeline;
 pub mod mesh_store;
-pub mod gfx_helper;
-pub mod shader;
+mod gfx_helper;
+mod shader;
 pub mod shader_store;
 pub mod render_pass;
-pub mod render_node;
-pub mod mesh;
-pub mod material;
+mod render_node;
+mod mesh;
+mod material;
 pub mod render_queue;
 pub mod texture;
 pub mod camera;
 pub mod transform;
-pub use graphics::Graphics;
+
+pub type RenderNode = render_node::RenderNode<back::Backend>;
+pub type Graphics = graphics::Graphics<back::Backend>;
+pub type Mesh = mesh::Mesh<back::Backend>;
+pub type Shader = shader::Shader<back::Backend>;
+pub type Material = material::Material<back::Backend>;

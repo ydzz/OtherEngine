@@ -1,10 +1,8 @@
 //use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
 extern crate gfx_backend_gl as back;
 use crate::win::{Win};
-use crate::graphics::{Graphics};
-use crate::graphics::render_node::{RenderNode};
+use crate::graphics::{Graphics,RenderNode,Material};
 use crate::graphics::transform::{Transform};
-use crate::graphics::material::{Material};
 use crate::graphics::texture::{Texture};
 use crate::graphics::camera::{Camera};
 use crate::game::{Game};
@@ -16,7 +14,7 @@ use nalgebra::{Vector3,Isometry3,Translation3,Matrix4};
 pub struct App {
   //js_ctx:RefCell<JSContext>,
   //js_rt:JSRuntime
-  game:RefCell<Game<back::Backend>>,
+  game:RefCell<Game>,
   window:RefCell<Win>,
 }
 
@@ -63,7 +61,7 @@ impl App {
   }
 }
 
-fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> RenderNode<B> {
+fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics>) -> RenderNode {
     
     let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad);
     let start0 = chrono::Local::now();
@@ -75,13 +73,10 @@ fn create_test_node<B:gfx_hal::Backend>(graphics:&RefCell<Graphics<B>>) -> Rende
     
     let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
     mat.set_main_texture(tex);
-    let mut node_t = Transform::identity();
-    node_t.set_scale(Vector3::new(100f32,100f32,100f32));
-    node_t.matrix();
-    
-   
+    let mut node_t = Matrix4::identity();
+  
     RenderNode {
-      transform:node_t,
+      mat4:node_t,
       mesh :  rc_mesh,
       material : Rc::new(mat)
     }
