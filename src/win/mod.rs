@@ -13,8 +13,8 @@ use winit::event_loop::{EventLoop};
 use std::cell::{RefCell};
 use std::rc::{Rc};
 
-pub struct Win <T:IWinCall> {
-  event_loop:EventLoop<()>,
+pub struct Win <T:IWinCall + 'static> {
+  event_loop:Option<EventLoop<()>>,
   window:Option<winit::window::Window>,
   pub winsize:Extent2D,
   title:String,
@@ -24,7 +24,7 @@ pub struct Win <T:IWinCall> {
 impl<T> Win<T> where T:IWinCall {
  pub fn new() -> Self {
    let event_loop = EventLoop::new();
-   Win {event_loop : event_loop,window : None,
+   Win {event_loop : Some(event_loop),window : None,
         title:String::from("winit"), 
         winsize : Extent2D {width: 320,height: 240},win_call:None }
  }
@@ -35,7 +35,7 @@ impl<T> Win<T> where T:IWinCall {
         .with_inner_size(winit::dpi::LogicalSize::new(self.winsize.width as f64,self.winsize.height as f64))
         .with_title(self.title.clone());
    let builder = back::config_context(back::glutin::ContextBuilder::new(),ColorFormat::SELF, None).with_vsync(true);
-   let windowed_context = builder.build_windowed(wb, &self.event_loop).unwrap();
+   let windowed_context = builder.build_windowed(wb, self.event_loop.as_ref().unwrap()).unwrap();
    let (context,window) = unsafe { windowed_context.make_current().expect("Unable to make context current").split() };
    let surface = back::Surface::from_context(context);
    let mut adapters = surface.enumerate_adapters();
@@ -53,67 +53,41 @@ impl<T> Win<T> where T:IWinCall {
    self.winsize
  }
 
-
- pub fn on_resize(&mut self,w:f64,h:f64) {
-   self.win_call.as_ref().map(|wc| {wc.borrow().resize(w,h) });
- }
-
- pub fn on_update(&mut self) {
-   self.win_call.as_ref().map(|wc| {wc.borrow().update() });
- }
-
- pub fn run(&'static mut self) {
- 
-   self.event_loop.run(move |event, _, control_flow| {
+ pub fn run(&mut self) {
+   let eloop = self.event_loop.take().unwrap();
+   let win_call = self.win_call.take().unwrap();
+   let window = self.window.take().unwrap();
+   eloop.run(move |event, _, control_flow| {
     *control_flow = winit::event_loop::ControlFlow::Wait;
+    let inner_window = &window;
+    let inner_win_call = &win_call;
     match event {
       //WindowEvent
       winit::event::Event::WindowEvent { event, .. } => {
         match event {
           winit::event::WindowEvent::Resized(dims) => {
-            self.on_resize(dims.width,dims.height);
+            inner_win_call.borrow().resize(dims.width,dims.height);
           },
           winit::event::WindowEvent::RedrawRequested => {
-            self.on_update();
+            inner_win_call.borrow().call_update();
           },
           winit::event::WindowEvent::CloseRequested => {
             *control_flow = winit::event_loop::ControlFlow::Exit
-          }
+          },
+          _=>(),
         }
       },
       winit::event::Event::EventsCleared => {
-        self.window.as_ref().map(|w| {w.request_redraw()});
-      }
+        inner_window.request_redraw();
+      },
+      _=>()
     }
    });
-   /*
-   while running  {
-     self.event_loop.poll_events(|event| {
-        if let winit::Event::WindowEvent { event, .. } = event { 
-          match event {
-            winit::WindowEvent::CloseRequested => {
-              running = false
-            },
-            winit::WindowEvent::Resized(dims) => {
-              recreate_swapchain = true;
-              resize_dims.width = dims.width as u32;
-              resize_dims.height = dims.height as u32;
-              
-            },
-            _ => ()
-          }
-        }
-     });
-     if recreate_swapchain {
-       resize_fn(resize_dims);
-       recreate_swapchain = false;
-     }
-     draw_fn();
-   }*/
+   println!("run end");
  }
 }
 
 pub trait IWinCall {
   fn resize(&self,w:f64,h:f64);
-  fn update(&self);
+  fn call_update(&self);
 }

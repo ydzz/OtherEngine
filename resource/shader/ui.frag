@@ -11,4 +11,5 @@ layout(set = 1, binding = 1) uniform sampler u_sampler;
 
 void main() {
   target0 = texture(sampler2D(u_texture, u_sampler), v_uv);
+  target0 = vec4(1.0f,0.0,0.0,1.0);
 }

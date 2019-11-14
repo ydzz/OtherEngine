@@ -42,7 +42,7 @@ impl App {
   }
 */
  
-  pub fn run(&'static mut self) {
+  pub fn run(&mut self) {
     let size = self.window.get_winsize();
     let camera = Camera::standard_2d(size.width as f32, size.height as f32);
     self.game.borrow_mut().add_camera(camera);

@@ -44,12 +44,11 @@ impl Game {
         let test_node = Rc::new(create_test_node(&self.graphics,100f32));
         self.render_list.push(test_node);
 
-        let test_node = Rc::new(create_test_node(&self.graphics,0f32));
+        let test_node = Rc::new(create_test_node(&self.graphics,-100f32));
         self.render_list.push(test_node);
     }
 
-    pub fn update(&mut self) {
-        
+    pub fn update(&self) {
         self.graphics.borrow_mut().draw(&self.camera_list, &self.render_list);
     }
 
@@ -84,7 +83,7 @@ impl IWinCall for Game {
      self.graphics.borrow_mut().recreate_swapchain(Extent2D {width : w as u32, height : h as u32})
   }
 
-  fn update(&self) {
+  fn call_update(&self) {
       self.update();
   }
 }
