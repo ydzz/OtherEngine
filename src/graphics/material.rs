@@ -1,7 +1,7 @@
 use std::rc::{Rc};
 use std::cell::{RefCell};
 use gfx_hal as hal;
-use gfx_hal::{Device,pso,image as i};
+use gfx_hal::{device::{Device}, pso,image as i};
 use crate::graphics::texture::{Texture};
 use crate::graphics::shader::{Shader};
 

@@ -19,17 +19,21 @@ use gfx_hal::queue::Submission;
 use gfx_hal::{
     buffer,
     command,
+    command::{CommandBuffer},
     format as f,
     image as i,
     memory as m,
     pass,
+    queue::{family::{QueueFamily}},
     pool,
+    pool::{CommandPool},
     pso,
+    pso::{Primitive,DescriptorPool},
     window::Extent2D,
-    queue,queue::family as qf
+    window::{Surface,Swapchain,SwapchainConfig},
+    queue,queue::family as qf,
+    device::{Device},adapter::{PhysicalDevice,Adapter,MemoryType}
 };
-use gfx_hal::{DescriptorPool, Primitive, SwapchainConfig};
-use gfx_hal::{Device,Adapter,adapter::{MemoryType},Instance, PhysicalDevice, Surface, Swapchain};
 
 
 pub struct Graphics<B:gfx_hal::Backend> {
@@ -45,10 +49,10 @@ pub struct Graphics<B:gfx_hal::Backend> {
   pub mesh_store:MeshStore<B>,
   pub shader_store:Rc<ShaderStore<B>>,
   default_pass:Rc<RenderPass<B>>,
-  pub command_pool:pool::CommandPool<B,queue::capability::Graphics>,
-  command_buffer:RefCell< command::CommandBuffer<B,queue::capability::Graphics,command::MultiShot> >,
+  pub command_pool:B::CommandPool,
+  command_buffer:RefCell< B::CommandBuffer>,
   viewport : pso::Viewport,
-  pub queue_group :RefCell< qf::QueueGroup<B,queue::capability::Graphics>>,
+  pub queue_group :RefCell< qf::QueueGroup<B>>,
 
   submission_complete_semaphores:B::Semaphore,
 
@@ -63,13 +67,18 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
 
   pub fn new(mut surface:B::Surface,mut adapter:Adapter<B>,winsize:Extent2D) -> Self {
     //let start = chrono::Local::now();
-    let memory_types = adapter.physical_device.memory_properties().memory_types;
-    let (device, queue_group) = adapter
-                                        .open_with::<_, gfx_hal::Graphics>(1, |family| surface.supports_queue_family(family))
-                                        .unwrap();
-    let mut command_pool = unsafe {device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
+    let memory_types:Vec<MemoryType> = adapter.physical_device.memory_properties().memory_types;
+
+    let family = adapter.queue_families.iter()
+                   .find(|family| {
+                surface.supports_queue_family(family) && family.queue_type().supports_graphics()
+            }).unwrap();
+
+    let mut gpu = unsafe { adapter.physical_device.open(&[(family, &[1.0])], gfx_hal::Features::empty()).unwrap() };
+    let queues = gpu.queue_groups.pop().unwrap();
+    let mut command_pool = unsafe {gpu.device.create_command_pool(queues.family, pool::CommandPoolCreateFlags::empty())}.expect("Can't create command pool");
     println!("Memory types: {:?}", memory_types);
-    let rc_device = Rc::new(RefCell::new(device));
+    let rc_device = Rc::new(RefCell::new(gpu.device));
     
 
     
@@ -92,7 +101,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                         rc_device.borrow().create_framebuffer(ref_render_pass.get_raw_pass(), Some(rtv), extent).unwrap()
                     }).collect();
 
-    let command_buffer = command_pool.acquire_command_buffer::<command::MultiShot>();
+    let mut command_buffer = unsafe { command_pool.allocate_one(command::Level::Primary) };
+   
     let viewport = pso::Viewport {
                      rect: pso::Rect { x: 0, y: 0, w: extent.width as _, h: extent.height as _,},
                      depth: 0.0 .. 1.0
@@ -116,7 +126,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                command_pool : command_pool,
                command_buffer : RefCell::new(command_buffer),
                viewport : viewport,
-               queue_group : RefCell::new(queue_group),
+               queue_group : RefCell::new(queues),
                submission_complete_semaphores : submission_complete_semaphores,
                transparent_queue:RenderQueue::new(),
                geometry_queue:RenderQueue::new(),
@@ -135,7 +145,7 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
             }] )
   }
 
-  pub fn draw(&mut self,cameras:&Vec<Camera>,lst_node:&Vec<&RenderNode<B>>) {
+  pub fn draw(&mut self,cameras:&Vec<Camera>,lst_node:&Vec<Rc<RenderNode<B>>>) {
     let start = chrono::Local::now();
     self.geometry_queue.clear();
     self.transparent_queue.clear();
@@ -143,17 +153,19 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
     let (image_idx,_) = unsafe { self.swap_chain.acquire_image(!0,None,None).unwrap() };
     self.pick_nodes_to_queue(lst_node);
     for cam in cameras {
+     unsafe {
       self.draw_queue(cam,&self.geometry_queue);
       self.draw_queue(cam,&self.transparent_queue);
+     } 
     }
-    unsafe { self.swap_chain.present(&mut self.queue_group.borrow_mut().queues[0],image_idx as gfx_hal::SwapImageIndex,Some(&self.submission_complete_semaphores)).unwrap(); }
+    unsafe { self.swap_chain.present(&mut self.queue_group.borrow_mut().queues[0],image_idx,Some(&self.submission_complete_semaphores)).unwrap(); }
     let end = chrono::Local::now();
     //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
   }
 
-  pub fn pick_nodes_to_queue(&mut self,nodes:&Vec<&RenderNode<B>>) {
+  pub fn pick_nodes_to_queue(&mut self,nodes:&Vec<Rc<RenderNode<B>>>) {
      for i in 0..nodes.len()  {
-       let cur_node = nodes[i];
+       let cur_node = &nodes[i];
        match cur_node.material.get_shader().queue_type {
          QueueType::Geometry => self.geometry_queue.push_node(&cur_node),
          QueueType::Transparent => self.transparent_queue.push_node(&cur_node)
@@ -161,8 +173,9 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
      }
   }
 
-  pub fn draw_queue(&self,cam:&Camera,queue:&RenderQueue<B>) {
+  pub unsafe fn draw_queue(&self,cam:&Camera,queue:&RenderQueue<B>) {
     let framebuffers  = self.framebuffers.as_ref().unwrap();
+    
     for shader in queue.shaders.borrow().iter() {
        let pipeline = &shader.pipelines[0];
        for material in queue.meterials.borrow().iter() {
@@ -170,11 +183,11 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
          for i in 0..queue.meshes.borrow().len() {
            let owend_mat_id = queue.get_mesh_material_by_idx(i);
            if owend_mat_id != material.id { continue }
-           unsafe {
              let mesh = &queue.meshes.borrow()[i];
              let mvp_mat4 =  cam.p_matrix() * cam.view_matrix() * &queue.mesh_mat4.borrow()[i];
+            
              self.wolrdmvp_uniform.borrow_mut().buffer.as_mut().unwrap().update(0,mvp_mat4.as_slice());
-             self.command_buffer.borrow_mut().begin(false);
+             self.command_buffer.borrow_mut().begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
              self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
              self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
              self.command_buffer.borrow_mut()
@@ -185,6 +198,8 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                                   &[]);
              self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
              self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
+             //encoder.draw(0 .. mesh.vertex_count, 0 .. 3);
+             /*
              {
                self.command_buffer.borrow_mut().begin_render_pass_inline(
                     self.default_pass.get_raw_pass(),
@@ -194,23 +209,24 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
                         0.8, 0.8, 0.8, 1.0,
                     ]))],
                 ).draw(0 .. mesh.vertex_count, 0 .. 3);
-             }
+             }*/
              self.command_buffer.borrow_mut().finish();
              let ques = &mut self.queue_group.borrow_mut().queues;
              Ref::map(self.command_buffer.borrow(), |mi| { 
-               ques[0].submit_without_semaphores(Some(mi),None);
+               //.submit_without_semaphores(Some(mi),None);
                mi
              });
-           }
          }
        }
     }
+
+  
   }
 
   pub fn recreate_swapchain(&mut self,newsize:Extent2D) {
     unsafe {
-      let mut frames = self.framebuffers.take().unwrap();
-      let mut images = self.frameimages.take().unwrap();
+      let frames = self.framebuffers.take().unwrap();
+      let images = self.frameimages.take().unwrap();
       for frame in frames {
         self.device.borrow().destroy_framebuffer(frame);
       }
@@ -238,7 +254,9 @@ impl<B> Graphics<B> where B: gfx_hal::Backend {
 pub fn create_swapchain<B:gfx_hal::Backend>(winsize:Extent2D,mut surface:&mut B::Surface,
                         adapter:&mut Adapter<B>,device:&RefCell<B::Device>,may_format:Option<f::Format>)
     -> (B::Swapchain,f::Format,Vec<(B::Image,B::ImageView)>,gfx_hal::image::Extent)       {
-   let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
+   //let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
+   let caps = surface.capabilities(&adapter.physical_device);
+   let formats = surface.supported_formats(&adapter.physical_device);
    let format = may_format.or_else(|| {
        let format =  formats.map_or(f::Format::Rgba8Srgb, |formats| {
         formats.iter().find(|format| format.base_format().1 == ChannelType::Srgb)

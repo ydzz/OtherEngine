@@ -19,3 +19,4 @@ pub type Graphics = graphics::Graphics<back::Backend>;
 pub type Mesh = mesh::Mesh<back::Backend>;
 pub type Shader = shader::Shader<back::Backend>;
 pub type Material = material::Material<back::Backend>;
+pub type Texture = texture::Texture<back::Backend>;

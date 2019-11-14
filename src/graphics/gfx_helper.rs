@@ -7,9 +7,9 @@ use gfx_hal::{ Backend,
                buffer, 
                adapter::{Adapter, MemoryType},
                memory as m,
-               pso,
-               DescriptorPool
+               pso
              };
+use gfx_hal::pso::DescriptorPool;
 use std::rc::{Rc};
 use std::cell::{RefCell};
 #[derive(Debug, Clone, Copy)]
@@ -88,16 +88,19 @@ impl<B: Backend> BufferState<B> {
     let image_upload_memory = device.borrow().allocate_memory(upload_type, image_mem_reqs.size).unwrap();
     device.borrow_mut().bind_buffer_memory(&image_upload_memory, 0, &mut image_upload_buffer).unwrap();
     
-    let mut data_target = device.borrow().acquire_mapping_writer(&image_upload_memory,0..image_mem_reqs.size).unwrap();
+    let mapping = device.borrow().map_memory(&image_upload_memory, 0 .. image_mem_reqs.size).unwrap();
     let img = &dynimage.to_rgba();
     println!("{:?},len:{}",img.dimensions(),img.len());
-    
     for y in 0 .. height as usize {
-      let data_source_slice = &(**img)[y * (width as usize) * image_stride .. (y + 1) * (width as usize) * image_stride];
-      let dest_base = y * row_pitch as usize;
-      data_target[dest_base .. dest_base + data_source_slice.len()].copy_from_slice(data_source_slice);
+      let data_source_slice = &(**img)
+          [y * (width as usize) * image_stride .. (y + 1) * (width as usize) * image_stride];
+      ptr::copy_nonoverlapping(
+          data_source_slice.as_ptr(),
+          mapping.offset(y as isize * row_pitch as isize),
+          data_source_slice.len(),
+      );
     }
-    device.borrow_mut().release_mapping_writer(data_target).unwrap();
+    device.borrow_mut().unmap_memory(&image_upload_memory);
 
     (BufferState {
       memory : Some(image_upload_memory),

@@ -4,7 +4,7 @@ use crate::graphics::render_pass::RenderPass;
 use crate::graphics::render_queue::QueueType;
 use crate::graphics::shader::{compile_glsl_shader, Shader};
 use gfx_hal::{
-  device::Device, format as f, pass, pass::Subpass, pso, pso::VertexInputRate, Primitive,
+  device::Device, format as f, pass, pass::Subpass, pso, pso::VertexInputRate,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -83,7 +83,7 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
     let ref_pass = self.render_pass.get_raw_pass();
     let mut pipeline_desc = pso::GraphicsPipelineDesc::new(
       shader_entries,
-      Primitive::TriangleList,
+      pso::Primitive::TriangleList,
       pso::Rasterizer::FILL,
       &pipeline_layout,
       pass::Subpass {

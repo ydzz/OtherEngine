@@ -1,14 +1,15 @@
 extern crate gfx_backend_gl as back;
 use std::cell::{RefCell};
-use std::rc::{Rc};
 use crate::graphics::gfx_helper::{BufferState};
 use crate::graphics::graphics::{COLOR_RANGE,Graphics};
 use gfx_hal::{image as i,
               format::{AsFormat,Rgba8Srgb,Swizzle},device::{Device},
               memory as m,command,
-              format as f,
+              format as f
               };
+              
 use gfx_hal::pso::{PipelineStage};
+use gfx_hal::queue::{CommandQueue};
 use image::GenericImageView;
 use std::{iter};
 
@@ -42,23 +43,36 @@ impl<B> Texture<B> where B:gfx_hal::Backend {
     let kind = i::Kind::D2(width as i::Size,height as i::Size, 1, 1);
     unsafe {
       let mut image = gp.borrow().device.borrow().create_image(kind,1,Rgba8Srgb::SELF,i::Tiling::Optimal,
-                                                 i::Usage::TRANSFER_DST | i::Usage::SAMPLED,i::ViewCapabilities::empty()).unwrap();
-                           
+                                                               i::Usage::TRANSFER_DST | i::Usage::SAMPLED,i::ViewCapabilities::empty()).unwrap();
       let req = gp.borrow().device.borrow().get_image_requirements(&image);
-
       let device_type = gp.borrow().memory_types.iter().enumerate().position(|(id, memory_type)| {
                 req.type_mask & (1 << id) != 0
                     && memory_type.properties.contains(m::Properties::DEVICE_LOCAL)
             }).unwrap().into();
-
       let memory = gp.borrow().device.borrow().allocate_memory(device_type, req.size).unwrap();
       gp.borrow().device.borrow().bind_image_memory(&memory, 0, &mut image).unwrap();
       let image_view = gp.borrow().device.borrow().create_image_view(&image,i::ViewKind::D2,Rgba8Srgb::SELF,Swizzle::NO,COLOR_RANGE.clone()).unwrap();
-      let sampler = gp.borrow().device.borrow().create_sampler(i::SamplerInfo::new(i::Filter::Linear, i::WrapMode::Clamp)).expect("Can't create sampler");
+      let sampler = gp.borrow().device.borrow().create_sampler(&i::SamplerDesc::new(i::Filter::Linear, i::WrapMode::Clamp)).expect("Can't create sampler");
       self.image_view = Some(image_view);
       self.sampler = Some(sampler);
       let mut transfered_image_fence = gp.borrow().device.borrow().create_fence(false).expect("Can't create fence");
-      let mut cmd_buffer = gp.borrow_mut().command_pool.acquire_command_buffer::<command::OneShot>();
+
+      //let mut cmd_buffer = gp.borrow_mut().command_pool.allocate_one(command::Level::Primary);
+    }
+    /*
+    unsafe {
+                              
+      
+
+      
+
+      
+      
+      
+      
+      
+      
+      
       cmd_buffer.begin();
       let image_barrier = m::Barrier::Image {
                 states: (i::Access::empty(), i::Layout::Undefined)
@@ -102,7 +116,7 @@ impl<B> Texture<B> where B:gfx_hal::Backend {
       cmd_buffer.pipeline_barrier(PipelineStage::TRANSFER .. PipelineStage::FRAGMENT_SHADER,m::Dependencies::empty(),&[image_barrier]);
       cmd_buffer.finish();
       gp.borrow().queue_group.borrow_mut().queues[0].submit_without_semaphores(iter::once(&cmd_buffer),Some(&mut transfered_image_fence));
-    }
+    }*/
   }
 }
 

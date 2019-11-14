@@ -32,7 +32,7 @@ pub fn compile_glsl_shader(file_path:&str,shader_type:glsl_to_spirv::ShaderType)
    }
    let file_str = std::fs::read_to_string(file_path).map_err(|_| { String::from("read shader fail") })?;
    let vert_file = glsl_to_spirv::compile(&file_str, shader_type)?;
-   let spv = gfx_hal::read_spirv(vert_file).unwrap();
+   let spv = gfx_hal::pso::read_spirv(vert_file).unwrap();
    let mut v8: Vec<u8> = Vec::new();
    for n in &spv {
         v8.write_u32::<LittleEndian>(*n).unwrap();
