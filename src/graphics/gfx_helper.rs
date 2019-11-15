@@ -94,11 +94,7 @@ impl<B: Backend> BufferState<B> {
     for y in 0 .. height as usize {
       let data_source_slice = &(**img)
           [y * (width as usize) * image_stride .. (y + 1) * (width as usize) * image_stride];
-      ptr::copy_nonoverlapping(
-          data_source_slice.as_ptr(),
-          mapping.offset(y as isize * row_pitch as isize),
-          data_source_slice.len(),
-      );
+      ptr::copy_nonoverlapping(data_source_slice.as_ptr(),mapping.offset(y as isize * row_pitch as isize),data_source_slice.len());
     }
     device.borrow_mut().unmap_memory(&image_upload_memory);
 

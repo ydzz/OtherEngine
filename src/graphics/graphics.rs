@@ -55,9 +55,7 @@ pub struct Graphics<B: gfx_hal::Backend> {
   geometry_queue: RenderQueue<B>,
   transparent_queue: RenderQueue<B>,
 
-  worldmvp_layout: RefCell<DescSetLayout<B>>,
-  wolrdmvp_uniform: RefCell<Uniform<B>>,
-  www:RefCell<Uniform<B>>,
+  pub worldmvp_layout: RefCell<DescSetLayout<B>>,
 }
 
 impl<B> Graphics<B>
@@ -93,20 +91,10 @@ where
     let rc_device = Rc::new(RefCell::new(gpu.device));
 
     let mut worldmvp_layout = Graphics::create_mvp_layout(&rc_device);
-    let mat: na::Matrix4<f32> = na::Matrix4::identity();
-    let wolrdmvp_uniform = Uniform::new(
-      &rc_device,
-      &memory_types,
-      mat.as_slice(),
-      worldmvp_layout.create_desc_set(),
-      0,
-    );
-    let www = Uniform::new(&rc_device,&memory_types,mat.as_slice(),worldmvp_layout.create_desc_set(),0);
-
+  
     let mesh_store = MeshStore::new(Rc::clone(&rc_device), &memory_types);
 
-    let (swapchain, format, images, extent) =
-      create_swapchain(winsize, &mut surface, &mut adapter, &rc_device, None);
+    let (swapchain, format, images, extent) = create_swapchain(winsize, &mut surface, &mut adapter, &rc_device, None);
     let render_pass = RenderPass::new_default_pass(format, Rc::clone(&rc_device));
     let ref_render_pass = Rc::new(render_pass);
     let mut shader_store = ShaderStore::new(Rc::clone(&rc_device), Rc::clone(&ref_render_pass));
@@ -157,8 +145,6 @@ where
       transparent_queue: RenderQueue::new(),
       geometry_queue: RenderQueue::new(),
       worldmvp_layout: RefCell::new(worldmvp_layout),
-      wolrdmvp_uniform: RefCell::new(wolrdmvp_uniform),
-      www:RefCell::new(www)
     }
   }
 
@@ -243,23 +229,12 @@ where
           }
           
           let mesh = &queue.meshes.borrow()[i];
-          let mvp_mat4 = cam.p_matrix() * cam.view_matrix() * &queue.mesh_mat4.borrow()[i];
-          self.wolrdmvp_uniform.borrow_mut().buffer.as_mut().unwrap().update(0, mvp_mat4.as_slice()); 
-          if i == 0 {
-            self.command_buffer.borrow_mut().bind_graphics_descriptor_sets(&pipeline.pipeline_layout,
-              0,
-              vec![
-                self.wolrdmvp_uniform.borrow().raw_desc_set(),
-                material.get_desc_set(),
-              ],&[]);
-          }else {
-            self.command_buffer.borrow_mut().bind_graphics_descriptor_sets(&pipeline.pipeline_layout,
-              0,
-              vec![
-                self.www.borrow().raw_desc_set(),
-                material.get_desc_set(),
-              ],&[]);
-          }
+          let uniform = &queue.mesh_uniform.borrow()[i];
+          let mat = &queue.mesh_mat4.borrow()[i];
+          let mvp_mat4 =  cam.p_matrix() * cam.view_matrix() * mat;
+          uniform.borrow_mut().buffer.as_mut().unwrap().update(0,mvp_mat4.as_slice());
+          self.command_buffer.borrow_mut()
+                 .bind_graphics_descriptor_sets(&pipeline.pipeline_layout,0,vec![uniform.borrow().raw_desc_set(),material.get_desc_set(),],&[]);
           
           self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
           

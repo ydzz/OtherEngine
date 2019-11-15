@@ -71,11 +71,7 @@ fn create_test_node(graphics:&RefCell<Graphics>,xoffset:f32) -> RenderNode {
     let mut node_t = Transform::identity();
     node_t.set_scale(Vector3::new(100f32,100f32,100f32));
     node_t.set_x(xoffset);
-    RenderNode {
-      mat4:node_t.matrix(),
-      mesh :  rc_mesh,
-      material : Rc::new(mat)
-    }
+    RenderNode::new(graphics,&node_t, &rc_mesh,&Rc::new(mat))
 }
 
 impl IWinCall for Game {

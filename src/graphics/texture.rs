@@ -5,6 +5,7 @@ use crate::graphics::graphics::{COLOR_RANGE,Graphics};
 use gfx_hal::{image as i,
               format::{AsFormat,Rgba8Srgb,Swizzle},device::{Device},
               memory as m,command,
+              command::{CommandBuffer},
               format as f
               };
               
@@ -12,6 +13,8 @@ use gfx_hal::pso::{PipelineStage};
 use gfx_hal::queue::{CommandQueue};
 use image::GenericImageView;
 use std::{iter};
+use gfx_hal::pool::CommandPool;
+
 
 pub struct Texture <B:gfx_hal::Backend> {
   image:image::DynamicImage,
@@ -57,7 +60,8 @@ impl<B> Texture<B> where B:gfx_hal::Backend {
       self.sampler = Some(sampler);
       let mut transfered_image_fence = gp.borrow().device.borrow().create_fence(false).expect("Can't create fence");
 
-      //let mut cmd_buffer = gp.borrow_mut().command_pool.allocate_one(command::Level::Primary);
+      let mut cmd_buffer = gp.borrow_mut().command_pool.allocate_one(command::Level::Primary);
+      cmd_buffer.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
     }
     /*
     unsafe {
