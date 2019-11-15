@@ -2,6 +2,7 @@ pub mod pool;
 pub mod image;
 mod view_node;
 use std::rc::{Rc};
+use ::image::GenericImageView;
 use nalgebra::{Matrix4,Vector3};
 use crate::graphics::camera::Camera;
 use crate::graphics::transform::{Transform};
@@ -33,18 +34,16 @@ impl Game {
     }
 
     pub fn init_view(&mut self) {
-        let mut tex = Texture::load_by_path("resource/logo.png");
+        let mut tex = Texture::load_by_path("resource/a.jpg");
         tex.to_gpu(&self.graphics);
+        let tex_rc = Rc::new(tex);
         let mut map = HashMap::new();
-        map.insert(String::from("Texture"),ViewValue::Texture(tex) );
+        map.insert(String::from("Texture"),ViewValue::Texture(tex_rc.clone()) );
         map.insert(String::from("Width"),ViewValue::Int(100) );
         map.insert(String::from("Height"),ViewValue::Int(100) );
         self.view_tree = Some(image(map));
 
-        let test_node = Rc::new(create_test_node(&self.graphics,100f32));
-        self.render_list.push(test_node);
-
-        let test_node = Rc::new(create_test_node(&self.graphics,-100f32));
+        let test_node = Rc::new(create_test_node(&tex_rc,&self.graphics,10f32));
         self.render_list.push(test_node);
     }
 
@@ -59,17 +58,14 @@ impl Game {
 
 
 
-fn create_test_node(graphics:&RefCell<Graphics>,xoffset:f32) -> RenderNode {
+fn create_test_node(texture:&Rc<Texture>,graphics:&RefCell<Graphics>,xoffset:f32) -> RenderNode {
     
     let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad);
 
-    let mut tex = Texture::load_by_path("resource/logo.png");
-    tex.to_gpu(&graphics);
-    
     let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
-    mat.set_main_texture(tex);
+    mat.set_main_texture(texture.clone());
     let mut node_t = Transform::identity();
-    node_t.set_scale(Vector3::new(100f32,100f32,100f32));
+    node_t.set_scale(Vector3::new(300f32,300f32,1f32));
     node_t.set_x(xoffset);
     RenderNode::new(graphics,&node_t, &rc_mesh,&Rc::new(mat))
 }

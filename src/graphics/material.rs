@@ -9,7 +9,7 @@ pub struct Material<B:hal::Backend> {
   pub id:u128,
   pub desc_set:B::DescriptorSet,
   shader:Rc<Shader<B>>,
-  main_texture:Option<Texture<B>>,
+  main_texture:Option<Rc<Texture<B>>>,
   device:Rc<RefCell<B::Device>>
 }
 
@@ -31,7 +31,7 @@ impl<B> Material<B> where B:hal::Backend {
     &self.shader
   }
 
-  pub fn set_main_texture(&mut self,tex:Texture<B>) {
+  pub fn set_main_texture(&mut self,tex:Rc<Texture<B>>) {
     self.main_texture = Some(tex);
     unsafe { self.update_desc_set(); }
   }

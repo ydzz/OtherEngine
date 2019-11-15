@@ -47,7 +47,7 @@ pub struct Graphics<B: gfx_hal::Backend> {
   default_pass: Rc<RenderPass<B>>,
   pub command_pool: B::CommandPool,
   command_buffer: RefCell<B::CommandBuffer>,
-  viewport: pso::Viewport,
+  pub viewport: pso::Viewport,
   pub queue_group: RefCell<qf::QueueGroup<B>>,
 
   submission_complete_semaphores: B::Semaphore,

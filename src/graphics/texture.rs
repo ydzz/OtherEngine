@@ -6,7 +6,7 @@ use gfx_hal::{image as i,
               format::{AsFormat,Rgba8Srgb,Swizzle},device::{Device},
               memory as m,command,
               command::{CommandBuffer},
-              format as f
+              format as f,pso,
               };
               
 use gfx_hal::pso::{PipelineStage};
@@ -17,7 +17,7 @@ use gfx_hal::pool::CommandPool;
 
 
 pub struct Texture <B:gfx_hal::Backend> {
-  image:image::DynamicImage,
+  pub image:image::DynamicImage,
   buffer:Option<BufferState<B>>,
   image_view:Option<B::ImageView>,
   sampler:Option<B::Sampler>
@@ -26,7 +26,7 @@ pub struct Texture <B:gfx_hal::Backend> {
 impl<B> Texture<B> where B:gfx_hal::Backend {
   pub fn load_by_path(path:&str) -> Texture<B> {
     let img = image::open(path).unwrap();
-    
+
     Texture {image : img , buffer:None,image_view:None,sampler:None }
   }
 
@@ -62,6 +62,52 @@ impl<B> Texture<B> where B:gfx_hal::Backend {
 
       let mut cmd_buffer = gp.borrow_mut().command_pool.allocate_one(command::Level::Primary);
       cmd_buffer.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
+      let image_barrier = m::Barrier::Image {
+                states: (i::Access::empty(), i::Layout::Undefined)
+                    .. (i::Access::TRANSFER_WRITE, i::Layout::TransferDstOptimal),
+                target: &image,
+                families: None,
+                range: COLOR_RANGE.clone()};
+      cmd_buffer.pipeline_barrier(
+                pso::PipelineStage::TOP_OF_PIPE .. pso::PipelineStage::TRANSFER,
+                m::Dependencies::empty(),
+                &[image_barrier]);
+
+      cmd_buffer.copy_buffer_to_image(
+                self.buffer.as_ref().unwrap().get_buffer(),
+                &image,
+                i::Layout::TransferDstOptimal,
+                &[command::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_width: row_pitch / (stride as u32),
+                    buffer_height: height as u32,
+                    image_layers: i::SubresourceLayers {
+                        aspects: f::Aspects::COLOR,
+                        level: 0,
+                        layers: 0 .. 1,
+                    },
+                    image_offset: i::Offset { x: 0, y: 0, z: 0 },
+                    image_extent: i::Extent {
+                        width:  width,
+                        height: height,
+                        depth: 1,
+                    },
+                }]);
+      let image_barrier = m::Barrier::Image {
+                states: (i::Access::TRANSFER_WRITE, i::Layout::TransferDstOptimal)
+                    .. (i::Access::SHADER_READ, i::Layout::ShaderReadOnlyOptimal),
+                target: &image,
+                families: None,
+                range: COLOR_RANGE.clone(),
+            };
+            cmd_buffer.pipeline_barrier(
+                pso::PipelineStage::TRANSFER .. pso::PipelineStage::FRAGMENT_SHADER,
+                m::Dependencies::empty(),
+                &[image_barrier],
+            );
+
+      cmd_buffer.finish();
+      gp.borrow().queue_group.borrow_mut().queues[0].submit_without_semaphores(iter::once(&cmd_buffer),Some(&mut transfered_image_fence));
     }
     /*
     unsafe {

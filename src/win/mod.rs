@@ -26,7 +26,7 @@ impl<T> Win<T> where T:IWinCall {
    let event_loop = EventLoop::new();
    Win {event_loop : Some(event_loop),window : None,
         title:String::from("winit"), 
-        winsize : Extent2D {width: 320,height: 240},win_call:None }
+        winsize : Extent2D {width: 640,height: 480},win_call:None }
  }
 
  pub fn init(&mut self) -> (back::Surface,Adapter<back::Backend>) {

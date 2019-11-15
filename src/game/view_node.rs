@@ -1,5 +1,6 @@
 use crate::graphics::transform::Transform;
 use nalgebra::Vector3;
+use std::rc::{Rc};
 use std::collections::HashMap;
 use crate::graphics::{RenderNode,Texture};
 pub enum ViewValue {
@@ -8,7 +9,7 @@ pub enum ViewValue {
     Bool(bool),
     String(String),
     Vec3(Vector3<f32>),
-    Texture(Texture)
+    Texture(Rc<Texture>)
 }
 pub struct ViewNode {
     v_type: String,
