@@ -1,4 +1,3 @@
-extern crate gfx_backend_gl as back;
 use std::cell::{RefCell};
 use crate::graphics::gfx_helper::{BufferState};
 use crate::graphics::graphics::{COLOR_RANGE,Graphics};

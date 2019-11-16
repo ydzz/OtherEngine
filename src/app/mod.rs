@@ -1,8 +1,15 @@
-//use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
+#[cfg(feature = "gl")]
 extern crate gfx_backend_gl as back;
+#[cfg(not(any(
+    feature = "gl",
+    feature = "dx12"
+)))]
+extern crate gfx_backend_vulkan as back;
+//use qjs_rs::{JSContext,JSRuntime,init_internal,EvalType};
 use crate::win::{Win};
 use crate::graphics::camera::{Camera};
 use crate::graphics::{Graphics};
+use crate::graphics::gfx_helper::{GPBackend};
 use crate::game::{Game};
 use std::cell::{RefCell};
 use std::rc::{Rc};
@@ -21,10 +28,10 @@ impl App {
     //let ref_ctx = RefCell::new(ctx);
     let mut win:Win<Game> = Win::new();
     let start = chrono::Local::now();
-    let (surface,adapter) = win.init();
+    let gp_backend:GPBackend<back::Backend> = win.init();
     let end = chrono::Local::now();
     println!("newapp {} ms",end.timestamp_millis() - start.timestamp_millis());
-    let  graphics = Graphics::new(surface,adapter,win.get_winsize());
+    let  graphics = Graphics::new(gp_backend,win.get_winsize());
     let  mut game = Game::new(graphics);
     game.init_view();
     let game_rc = Rc::new(RefCell::new(game)) ;

@@ -1,4 +1,3 @@
-mod game_core;
 //mod jsbinding;
 mod app;
 mod win;

@@ -1,8 +1,15 @@
+#[cfg(feature = "gl")]
 extern crate gfx_backend_gl as back;
+#[cfg(not(any(
+    feature = "gl",
+    feature = "dx12"
+)))]
+extern crate gfx_backend_vulkan as back;
+
 mod graphics;
 pub mod pipeline;
 pub mod mesh_store;
-mod gfx_helper;
+pub mod gfx_helper;
 mod shader;
 pub mod shader_store;
 pub mod render_pass;

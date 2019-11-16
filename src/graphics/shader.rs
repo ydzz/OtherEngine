@@ -1,4 +1,3 @@
-extern crate gfx_backend_gl as back;
 use crate::graphics::pipeline::{Pipeline};
 use crate::graphics::render_queue::{QueueType};
 extern crate byteorder;

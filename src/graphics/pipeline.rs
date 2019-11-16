@@ -1,4 +1,3 @@
-extern crate gfx_backend_gl as back;
 use gfx_hal as hal;
 use std::rc::{Rc};
 use std::cell::{RefCell};

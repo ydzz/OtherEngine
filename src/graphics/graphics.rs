@@ -1,9 +1,7 @@
 extern crate alga;
-extern crate gfx_backend_gl as back;
 extern crate nalgebra as na;
 use crate::graphics::camera::Camera;
-use crate::graphics::camera::Orthographic;
-use crate::graphics::gfx_helper::{DescSetLayout, Uniform};
+use crate::graphics::gfx_helper::{DescSetLayout, Uniform,GPBackend};
 use crate::graphics::mesh_store::MeshStore;
 use crate::graphics::render_node::RenderNode;
 use crate::graphics::render_pass::RenderPass;
@@ -62,7 +60,9 @@ impl<B> Graphics<B>
 where
   B: gfx_hal::Backend,
 {
-  pub fn new(mut surface: B::Surface, mut adapter: Adapter<B>, winsize: Extent2D) -> Self {
+  pub fn new(mut gp_backend: GPBackend<B>, winsize: Extent2D) -> Self {
+    let mut surface = gp_backend.surface;
+    let mut adapter = gp_backend.adapter;
     //let start = chrono::Local::now();
     let memory_types: Vec<MemoryType> = adapter.physical_device.memory_properties().memory_types;
 
@@ -171,7 +171,7 @@ where
     for cam in cameras {
       unsafe {
         self.draw_queue(cam, &self.geometry_queue);
-        self.draw_queue(cam, &self.transparent_queue);
+        //self.draw_queue(cam, &self.transparent_queue);
       }
     }
     unsafe {

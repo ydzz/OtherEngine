@@ -11,7 +11,9 @@ edition = "2018"
 image = "0.22.3"
 winit = "0.20.0-alpha4"
 gfx = "0.18.2"
-gfx-backend-gl = { version = "0.4.0", optional = true}  
+gfx-backend-gl = { version = "0.4.0", optional = true}
+gfx-backend-vulkan = {version = "0.4.0", optional = true}
+gfx-backend-empty = {version = "0.4.0",optional = true}
 gfx-hal = "0.4.1"
 glutin = "0.22.0-alpha3"
 nalgebra = { version = "0.19.0", features = ["serde-serialize", "mint"] }
@@ -26,5 +28,6 @@ uuid = {version =   "0.8.1", features = ["serde","v4"]}
 #lto = true
 
 [features]
-default = ["gfx-backend-gl", "gfx-backend-gl/glutin"]
-
+default = ["gfx-backend-vulkan"]
+vulkan = ["gfx-backend-vulkan"]
+gl = ["gfx-backend-gl", "gfx-backend-gl/glutin"]

@@ -1,4 +1,3 @@
-extern crate gfx_backend_gl as back;
 use std::mem::{size_of, ManuallyDrop};
 use std::{iter, ptr};
 use image::GenericImageView;
@@ -192,4 +191,13 @@ impl<B: Backend> Uniform<B> {
   pub fn raw_desc_set(&self) -> &B::DescriptorSet {
     self.desc_set.as_ref().unwrap()
   }
+}
+
+pub struct GPBackend <B:Backend> {
+  pub surface:B::Surface,
+  pub adapter:Adapter<B>
+}
+
+pub struct FrameBuffer<B:Backend> {
+  framebuffers: Option<Vec<B::Framebuffer>>,
 }
