@@ -3,10 +3,12 @@ use std::{iter, ptr};
 use image::GenericImageView;
 use gfx_hal::{ Backend,
                device::{Device}, 
-               buffer, 
+               buffer, pool,queue::family::{QueueGroup},
                adapter::{Adapter, MemoryType},
                memory as m,
-               pso
+               pso,window::{Surface},window as w,
+               format::{self as f, AsFormat},
+               image as i
              };
 use gfx_hal::pso::DescriptorPool;
 use std::rc::{Rc};
@@ -125,14 +127,14 @@ pub struct DescSetLayout<B: Backend> {
 }
 
 impl<B>  DescSetLayout<B> where B:Backend {
-  pub  fn new(device:Rc<RefCell<B::Device>>, bindings: Vec<pso::DescriptorSetLayoutBinding>) -> Self {
+  pub  fn new(device:Rc<RefCell<B::Device>>, bindings: Vec<pso::DescriptorSetLayoutBinding>,size:usize) -> Self {
     unsafe {
       let pools:Vec<pso::DescriptorRangeDesc> = bindings.iter().map(|binding| pso::DescriptorRangeDesc {
         ty : binding.ty,
-        count : 1
+        count : binding.count
       }).collect();
       let desc_set_layout = device.borrow().create_descriptor_set_layout(bindings, &[]).ok();
-      let pool = device.borrow().create_descriptor_pool(1,pools,pso::DescriptorPoolCreateFlags::empty()).ok();
+      let pool = device.borrow().create_descriptor_pool(size,pools,pso::DescriptorPoolCreateFlags::empty()).ok();
       DescSetLayout {
             layout: desc_set_layout,
             device,
@@ -144,7 +146,7 @@ impl<B>  DescSetLayout<B> where B:Backend {
     self.layout.as_ref().unwrap()
   }
   pub fn create_desc_set(&mut self) -> B::DescriptorSet {
-    unsafe { self.pool.as_mut().unwrap().allocate_set(self.layout.as_ref().unwrap()).unwrap() }
+    unsafe { self.pool.as_mut().unwrap().allocate_set(self.layout.as_ref().unwrap()).expect("?????????????") }
   }
 }
 
@@ -198,6 +200,149 @@ pub struct GPBackend <B:Backend> {
   pub adapter:Adapter<B>
 }
 
+impl<B> GPBackend<B> where B:Backend {
+  pub fn rc_surface(&self) -> &B::Surface {
+    &self.surface
+  }
+  pub fn rc_adapter(&self) -> &Adapter<B> {
+    &self.adapter
+  }
+}
+
+
+
 pub struct FrameBuffer<B:Backend> {
   framebuffers: Option<Vec<B::Framebuffer>>,
+  framebuffer_fences: Option<Vec<B::Fence>>,
+  command_pools: Option<Vec<B::CommandPool>>,
+  command_buffer_lists: Vec<Vec<B::CommandBuffer>>,
+  frame_images: Option<Vec<(B::Image, B::ImageView)>>,
+  acquire_semaphores: Option<Vec<B::Semaphore>>,
+  present_semaphores: Option<Vec<B::Semaphore>>,
+  last_ref: usize,
+  device: Rc<RefCell<B::Device>>,
 }
+
+impl<B> FrameBuffer<B> where B:Backend {
+  pub fn new(device: Rc<RefCell<B::Device>>,render_pass: &B::RenderPass,swapchain: &mut Swapchain<B>,queues:&QueueGroup<B>) -> Self {
+    let extent = i::Extent { 
+                             width: swapchain.extent.width as _,
+                             height: swapchain.extent.height as _,
+                             depth: 1 
+                           };
+    let frame_images = swapchain.backbuffer.take().unwrap().into_iter()
+                                    .map(|image| {
+                                         let rtv = unsafe { device.borrow().create_image_view(
+                                                             &image,i::ViewKind::D2,
+                                                             swapchain.format,
+                                                             f::Swizzle::NO,COLOR_RANGE.clone()).unwrap() };
+                                         (image,rtv)}).collect::<Vec<_>>();
+    let framebuffers = frame_images.iter().map(|&(_, ref rtv)| {
+      unsafe { device.borrow().create_framebuffer(render_pass,Some(rtv),extent).unwrap() }
+    }).collect();
+
+    let iter_count = if frame_images.len() != 0 { frame_images.len() } else { 1  };
+
+    let mut fences: Vec<B::Fence> = vec![];
+    let mut command_pools: Vec<_> = vec![];
+    let mut command_buffer_lists = Vec::new();
+    let mut acquire_semaphores: Vec<B::Semaphore> = vec![];
+    let mut present_semaphores: Vec<B::Semaphore> = vec![];
+
+    for _ in 0 .. iter_count {
+      fences.push(device.borrow().create_fence(true).unwrap());
+      unsafe {
+        command_pools.push(
+          device.borrow().create_command_pool(queues.family,pool::CommandPoolCreateFlags::empty()).expect("Can't create command pool"),
+        );
+      }
+      command_buffer_lists.push(Vec::new());
+      acquire_semaphores.push(device.borrow().create_semaphore().unwrap());
+      present_semaphores.push(device.borrow().create_semaphore().unwrap());
+    }
+    FrameBuffer {
+      frame_images: Some(frame_images),
+      framebuffers: Some(framebuffers),
+      framebuffer_fences: Some(fences),
+      command_pools: Some(command_pools),
+      command_buffer_lists,
+      present_semaphores: Some(present_semaphores),
+      acquire_semaphores: Some(acquire_semaphores),
+      device,
+      last_ref: 0,
+    }
+  }
+
+  pub fn next_acq_pre_pair_index(&mut self) -> usize {
+    if self.last_ref >= self.acquire_semaphores.as_ref().unwrap().len() {
+        self.last_ref = 0
+    }
+
+    let ret = self.last_ref;
+    self.last_ref += 1;
+    ret
+  }
+
+  pub fn get_frame_data(&mut self,frame_id: Option<usize>,sem_index: Option<usize>) -> (
+    Option<(&mut B::Fence,&mut B::Framebuffer,&mut B::CommandPool,&mut Vec<B::CommandBuffer>)>,
+    Option<(&mut B::Semaphore, &mut B::Semaphore)>) {
+      (
+        if let Some(fid) = frame_id {
+            Some((
+                &mut self.framebuffer_fences.as_mut().unwrap()[fid],
+                &mut self.framebuffers.as_mut().unwrap()[fid],
+                &mut self.command_pools.as_mut().unwrap()[fid],
+                &mut self.command_buffer_lists[fid],
+            ))
+        } else {
+            None
+        },
+        if let Some(sid) = sem_index {
+            Some((
+                &mut self.acquire_semaphores.as_mut().unwrap()[sid],
+                &mut self.present_semaphores.as_mut().unwrap()[sid],
+            ))
+        } else {
+            None
+        },
+    ) 
+  }
+}
+
+pub struct Swapchain<B:Backend> {
+  pub swapchain: Option<B::Swapchain>,
+  backbuffer: Option<Vec<B::Image>>,
+  device: Rc<RefCell<B::Device>>,
+  pub extent: i::Extent,
+  pub format: f::Format,
+}
+
+impl<B> Swapchain<B> where B:Backend {
+  pub fn new(backend:&mut GPBackend<B>,device: Rc<RefCell<B::Device>>,wsize:w::Extent2D) -> Self {
+    let caps = backend.surface.capabilities(&backend.adapter.physical_device);
+    let formats = backend.surface.supported_formats(&backend.adapter.physical_device);
+    let format = formats.map_or(f::Format::Rgba8Srgb, |formats| {
+      formats.iter()
+             .find(|format| format.base_format().1 == f::ChannelType::Srgb)
+             .map(|format| *format).unwrap_or(formats[0]) });
+    let swap_config = w::SwapchainConfig::from_caps(&caps, format, wsize);
+    let extent = swap_config.extent.to_extent();
+    let (swapchain, backbuffer) = unsafe { device.borrow()
+                                                 .create_swapchain(&mut backend.surface, swap_config, None)
+                                                 .expect("Can't create swapchain")
+                                  };
+    Swapchain {
+      swapchain : Some(swapchain),
+      backbuffer : Some(backbuffer),
+      device,
+      extent,
+      format,
+    }
+  }
+}
+
+pub const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
+  aspects: f::Aspects::COLOR,
+  levels: 0..1,
+  layers: 0..1,
+};

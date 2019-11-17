@@ -1,6 +1,6 @@
 use std::cell::{RefCell};
-use crate::graphics::gfx_helper::{BufferState};
-use crate::graphics::graphics::{COLOR_RANGE,Graphics};
+use crate::graphics::gfx_helper::{COLOR_RANGE,BufferState};
+use crate::graphics::graphics::{Graphics};
 use gfx_hal::{image as i,
               format::{AsFormat,Rgba8Srgb,Swizzle},device::{Device},
               memory as m,command,

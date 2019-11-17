@@ -66,7 +66,7 @@ impl Camera {
                 width / 2.0,
                 height / 2.0,
                 -height / 2.0,
-                0.1,
+                -2000.0,
                 2000.0))
         }
     }

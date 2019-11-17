@@ -1,7 +1,7 @@
 extern crate alga;
 extern crate nalgebra as na;
 use crate::graphics::camera::Camera;
-use crate::graphics::gfx_helper::{DescSetLayout, Uniform,GPBackend};
+use crate::graphics::gfx_helper::{DescSetLayout,Swapchain as GfxSwapchain,FrameBuffer,Uniform,GPBackend};
 use crate::graphics::mesh_store::MeshStore;
 use crate::graphics::render_node::RenderNode;
 use crate::graphics::render_pass::RenderPass;
@@ -24,36 +24,29 @@ use gfx_hal::{
   queue::family as qf,
   queue::{family::QueueFamily, CommandQueue},
   window::Extent2D,
-  window::{Surface, Swapchain, SwapchainConfig},
+  window::{Surface, SwapchainConfig,Swapchain},
 };
 use std::cell::{Ref, RefCell};
 use std::iter;
 use std::rc::Rc;
 
 pub struct Graphics<B: gfx_hal::Backend> {
-  surface: B::Surface,
-  pub adapter: Adapter<B>,
   pub memory_types: Vec<MemoryType>,
   pub device: Rc<RefCell<B::Device>>,
-  swap_chain: B::Swapchain,
-  format: f::Format,
-  framebuffers: Option<Vec<B::Framebuffer>>,
-  frameimages: Option<Vec<(B::Image, B::ImageView)>>,
-
+  swapchain: Option<GfxSwapchain<B>>,
+  framebuffer: FrameBuffer<B>,
   pub mesh_store: MeshStore<B>,
-  pub shader_store: Rc<ShaderStore<B>>,
+  pub shader_store: Rc<RefCell< ShaderStore<B>>>,
   default_pass: Rc<RenderPass<B>>,
   pub command_pool: B::CommandPool,
   command_buffer: RefCell<B::CommandBuffer>,
   pub viewport: pso::Viewport,
   pub queue_group: RefCell<qf::QueueGroup<B>>,
-
-  submission_complete_semaphores: B::Semaphore,
-
   geometry_queue: RenderQueue<B>,
   transparent_queue: RenderQueue<B>,
-
   pub worldmvp_layout: RefCell<DescSetLayout<B>>,
+  backend:GPBackend<B>
+
 }
 
 impl<B> Graphics<B>
@@ -61,90 +54,55 @@ where
   B: gfx_hal::Backend,
 {
   pub fn new(mut gp_backend: GPBackend<B>, winsize: Extent2D) -> Self {
-    let mut surface = gp_backend.surface;
-    let mut adapter = gp_backend.adapter;
-    //let start = chrono::Local::now();
-    let memory_types: Vec<MemoryType> = adapter.physical_device.memory_properties().memory_types;
+    //let mut rc_backend = Rc::new(gp_backend);
+    let memory_types: Vec<MemoryType> = gp_backend.rc_adapter().physical_device.memory_properties().memory_types;
 
-    let family = adapter
-      .queue_families
-      .iter()
-      .find(|family| {
-        surface.supports_queue_family(family) && family.queue_type().supports_graphics()
-      })
-      .unwrap();
+    let family = gp_backend.rc_adapter().queue_families.iter().find(|family| {
+      gp_backend.rc_surface().supports_queue_family(family) && family.queue_type().supports_graphics()
+    }).unwrap();
 
     let mut gpu = unsafe {
-      adapter
-        .physical_device
-        .open(&[(family, &[1.0])], gfx_hal::Features::empty())
-        .unwrap()
+      gp_backend.rc_adapter().physical_device.open(&[(family, &[1.0])], gfx_hal::Features::empty()).unwrap()
     };
     let queues = gpu.queue_groups.pop().unwrap();
     let mut command_pool = unsafe {
-      gpu
-        .device
-        .create_command_pool(queues.family, pool::CommandPoolCreateFlags::empty())
-    }
-    .expect("Can't create command pool");
-    println!("Memory types: {:?}", memory_types);
+      gpu.device.create_command_pool(queues.family, pool::CommandPoolCreateFlags::empty()).expect("Can't create command pool")
+    };
+    
     let rc_device = Rc::new(RefCell::new(gpu.device));
 
-    let mut worldmvp_layout = Graphics::create_mvp_layout(&rc_device);
-  
-    let mesh_store = MeshStore::new(Rc::clone(&rc_device), &memory_types);
+    let worldmvp_layout = Graphics::create_mvp_layout(&rc_device);
 
-    let (swapchain, format, images, extent) = create_swapchain(winsize, &mut surface, &mut adapter, &rc_device, None);
-    let render_pass = RenderPass::new_default_pass(format, Rc::clone(&rc_device));
+    let mut swapchain = GfxSwapchain::new(&mut gp_backend, rc_device.clone(),winsize);
+
+    let render_pass = RenderPass::new_default_pass(swapchain.format, Rc::clone(&rc_device));
     let ref_render_pass = Rc::new(render_pass);
+
+    let mesh_store = MeshStore::new(Rc::clone(&rc_device), &memory_types);
     let mut shader_store = ShaderStore::new(Rc::clone(&rc_device), Rc::clone(&ref_render_pass));
     shader_store.init_builtin_shader(&worldmvp_layout);
+    
+    let framebuffer = FrameBuffer::new(rc_device.clone(),ref_render_pass.get_raw_pass(),&mut swapchain,&queues);
 
-    let fbos: Vec<B::Framebuffer> = images
-      .iter()
-      .map(|&(_, ref rtv)| unsafe {
-        rc_device
-          .borrow()
-          .create_framebuffer(ref_render_pass.get_raw_pass(), Some(rtv), extent)
-          .unwrap()
-      })
-      .collect();
-    let mut command_buffer = unsafe { command_pool.allocate_one(command::Level::Primary) };
-    let viewport = pso::Viewport {
-      rect: pso::Rect {
-        x: 0,
-        y: 0,
-        w: extent.width as _,
-        h: extent.height as _,
-      },
-      depth: 0.0..1.0,
-    };
-    let submission_complete_semaphores = rc_device
-      .borrow()
-      .create_semaphore()
-      .expect("Could not create semaphore");
-    //let end = chrono::Local::now();
-    //println!("new graphics {} ms",end.timestamp_millis() - start.timestamp_millis());
+    let  command_buffer = unsafe { command_pool.allocate_one(command::Level::Primary) };
+    let viewport = Graphics::create_viewport(&swapchain);
+
     Graphics {
-      surface: surface,
-      adapter: adapter,
       memory_types: memory_types,
       mesh_store: mesh_store,
-      shader_store: Rc::new(shader_store),
+      shader_store: Rc::new(RefCell::new(shader_store)),
       default_pass: ref_render_pass,
       device: rc_device,
-      swap_chain: swapchain,
-      format: format,
-      framebuffers: Some(fbos),
-      frameimages: Some(images),
+      swapchain: Some(swapchain),
+      framebuffer: framebuffer,
       command_pool: command_pool,
       command_buffer: RefCell::new(command_buffer),
       viewport: viewport,
       queue_group: RefCell::new(queues),
-      submission_complete_semaphores: submission_complete_semaphores,
       transparent_queue: RenderQueue::new(),
       geometry_queue: RenderQueue::new(),
       worldmvp_layout: RefCell::new(worldmvp_layout),
+      backend: gp_backend
     }
   }
 
@@ -157,35 +115,36 @@ where
         count: 1,
         stage_flags: pso::ShaderStageFlags::VERTEX,
         immutable_samplers: false,
-      }],
+      }],1000
     )
   }
 
+  fn create_viewport(swapchain: &GfxSwapchain<B>) -> pso::Viewport {
+    pso::Viewport {
+            rect: pso::Rect {
+                x: 0,
+                y: 0,
+                w: swapchain.extent.width as i16,
+                h: swapchain.extent.height as i16,
+            },
+            depth: 0.0 .. 1.0
+    }
+  }
+
   pub fn draw(&mut self, cameras: &Vec<Camera>, lst_node: &Vec<Rc<RenderNode<B>>>) {
-    let start = chrono::Local::now();
     self.geometry_queue.clear();
     self.transparent_queue.clear();
-
-    let (image_idx, _) = unsafe { self.swap_chain.acquire_image(!0, None, None).unwrap() };
+    //let (image_idx, _) = unsafe { self.swap_chain.acquire_image(!0, None, None).unwrap() };
     self.pick_nodes_to_queue(lst_node);
     for cam in cameras {
       unsafe {
-        self.draw_queue(cam, &self.geometry_queue);
+        self.draw_queue(cam);
         //self.draw_queue(cam, &self.transparent_queue);
       }
     }
     unsafe {
-      self
-        .swap_chain
-        .present(
-          &mut self.queue_group.borrow_mut().queues[0],
-          image_idx,
-          Some(&self.submission_complete_semaphores),
-        )
-        .unwrap();
+      //self.swap_chain.present(&mut self.queue_group.borrow_mut().queues[0],image_idx,Some(&self.submission_complete_semaphores)).unwrap();
     }
-    //let end = chrono::Local::now();
-    //println!("draw {} ms",end.timestamp_millis() - start.timestamp_millis());
   }
 
   pub fn pick_nodes_to_queue(&mut self, nodes: &Vec<Rc<RenderNode<B>>>) {
@@ -198,26 +157,43 @@ where
     }
   }
 
-  pub unsafe fn draw_queue(&self, cam: &Camera, queue: &RenderQueue<B>) {
-    let framebuffers = self.framebuffers.as_ref().unwrap();
-    self.command_buffer.borrow_mut().set_viewports(0, &[self.viewport.clone()]);
-    self.command_buffer.borrow_mut().set_scissors(0, &[self.viewport.rect]);
+  pub unsafe fn draw_queue(&mut self, cam: &Camera) {
+    let queue = &self.geometry_queue;
+    let sem_index = self.framebuffer.next_acq_pre_pair_index();
+    let (acquire_semaphore, _) = self.framebuffer.get_frame_data(None, Some(sem_index)).1.unwrap();
     
-    self.command_buffer.borrow_mut().begin_primary(command::CommandBufferFlags::SIMULTANEOUS_USE);
+    let acquire_image = self.swapchain.as_mut().unwrap().swapchain.as_mut().unwrap().acquire_image(!0, Some(acquire_semaphore), None);
+    let frame = match acquire_image {
+      Ok((i, _)) => i,
+      Err(_) => { return; }
+    };
+
+    
+    let (fid, sid) = self.framebuffer.get_frame_data(Some(frame as usize), Some(sem_index));
+    let (framebuffer_fence, framebuffer, command_pool, command_buffers) = fid.unwrap();
+    let (image_acquired, image_present) = sid.unwrap();
+
+    self.device.borrow().wait_for_fence(framebuffer_fence, !0).unwrap();
+    self.device.borrow().reset_fence(framebuffer_fence).unwrap();
+    command_pool.reset(false);
+    
+    let mut cmd_buffer = match command_buffers.pop() {
+      Some(cmd_buffer) => cmd_buffer,
+      None => command_pool.allocate_one(command::Level::Primary),
+    };
+    cmd_buffer.begin_primary(command::CommandBufferFlags::ONE_TIME_SUBMIT);
+    cmd_buffer.set_viewports(0, &[self.viewport.clone()]);
+    cmd_buffer.set_scissors(0, &[self.viewport.rect]);
+    cmd_buffer.begin_render_pass(
+      self.default_pass.get_raw_pass(),
+      framebuffer,
+      self.viewport.rect,
+      &[command::ClearValue { color: command::ClearColor { float32: [0.8, 0.8, 0.8, 1.0] }}],command::SubpassContents::Inline);
+    let vp_mat4 =  cam.p_matrix() * cam.view_matrix();
     for shader in queue.shaders.borrow().iter() {
       let pipeline = &shader.pipelines[0];
-      self.command_buffer.borrow_mut().bind_graphics_pipeline(&pipeline.raw_pipeline);
-      self.command_buffer.borrow_mut().begin_render_pass(
-            self.default_pass.get_raw_pass(),
-            &framebuffers[0],
-            self.viewport.rect,
-            &[command::ClearValue {
-              color: command::ClearColor {
-                float32: [0.8, 0.8, 0.8, 1.0],
-              },
-            }],
-            command::SubpassContents::Inline,
-          );
+      cmd_buffer.bind_graphics_pipeline(&pipeline.raw_pipeline);
+      
       for material in queue.meterials.borrow().iter() {
         if material.get_shader().id != shader.id {
           continue;
@@ -227,127 +203,45 @@ where
           if owend_mat_id != material.id {
             continue;
           }
-          
+          //update mvp matrix
           let mesh = &queue.meshes.borrow()[i];
           let uniform = &queue.mesh_uniform.borrow()[i];
           let mat = &queue.mesh_mat4.borrow()[i];
-          let mvp_mat4 =  cam.p_matrix() * cam.view_matrix() * mat;
+          let mvp_mat4 =  vp_mat4 * mat;
+         
           uniform.borrow_mut().buffer.as_mut().unwrap().update(0,mvp_mat4.as_slice());
-          self.command_buffer.borrow_mut()
-                 .bind_graphics_descriptor_sets(&pipeline.pipeline_layout,0,vec![uniform.borrow().raw_desc_set(),material.get_desc_set(),],&[]);
-          
-          self.command_buffer.borrow_mut().bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
-          
-          self.command_buffer.borrow_mut().draw(0..mesh.vertex_count, 0..1);
-          
+
+          cmd_buffer.bind_graphics_descriptor_sets(&pipeline.pipeline_layout,0,vec![uniform.borrow().raw_desc_set(),material.get_desc_set(),],&[]);
+          cmd_buffer.bind_vertex_buffers(0, Some((mesh.get_raw_buffer(), 0)));
+  
+          cmd_buffer.draw(0..mesh.vertex_count, 0..1);        
         }
       }
     }
-    self.command_buffer.borrow_mut().end_render_pass();
-    self.command_buffer.borrow_mut().finish();
-    let queue = &mut self.queue_group.borrow_mut().queues[0];
-    Ref::map(self.command_buffer.borrow(), |mi| {
-      queue.submit_without_semaphores(Some(mi), None);
-      mi
-    });
+    cmd_buffer.end_render_pass();
+    cmd_buffer.finish();
+    let submission = Submission {
+      command_buffers: iter::once(&cmd_buffer),
+      wait_semaphores: iter::once((&*image_acquired, pso::PipelineStage::BOTTOM_OF_PIPE)),
+      signal_semaphores: iter::once(&*image_present),
+    };
+    self.queue_group.borrow_mut().queues[0].submit(submission, Some(framebuffer_fence));
+    command_buffers.push(cmd_buffer);
+    self.swapchain.as_mut().unwrap().swapchain.as_mut().unwrap().present(
+                    &mut self.queue_group.borrow_mut().queues[0],
+                    frame,
+                    Some(&*image_present)).unwrap();
   }
 
   pub fn recreate_swapchain(&mut self, newsize: Extent2D) {
-    unsafe {
-      let frames = self.framebuffers.take().unwrap();
-      let images = self.frameimages.take().unwrap();
-      for frame in frames {
-        self.device.borrow().destroy_framebuffer(frame);
-      }
-      for (_, imageview) in images {
-        self.device.borrow().destroy_image_view(imageview);
-      }
-    }
     self.device.borrow().wait_idle().unwrap();
-    let (swapchain, _, images, extent) = create_swapchain(
-      newsize,
-      &mut self.surface,
-      &mut self.adapter,
-      &self.device,
-      Some(self.format),
-    );
-
-    let fbos: Vec<B::Framebuffer> = images
-      .iter()
-      .map(|&(_, ref rtv)| unsafe {
-        self
-          .device
-          .borrow()
-          .create_framebuffer(self.default_pass.get_raw_pass(), Some(rtv), extent)
-          .unwrap()
-      })
-      .collect();
-    self.framebuffers = Some(fbos);
-    self.frameimages = Some(images);
-    self.swap_chain = swapchain;
+    self.swapchain.take().unwrap();
+    self.swapchain = Some(GfxSwapchain::new(&mut self.backend, Rc::clone(&self.device),newsize) );
+    self.default_pass = Rc::new(RenderPass::new_default_pass(self.swapchain.as_ref().unwrap().format,self.device.clone()));
+    let buffer = FrameBuffer::new(self.device.clone(), self.default_pass.get_raw_pass(), self.swapchain.as_mut().unwrap(), &self.queue_group.borrow());
+    self.framebuffer = buffer;
+    self.viewport = Graphics::create_viewport(self.swapchain.as_ref().unwrap());
+    self.shader_store.borrow_mut().re_create_render_pass(self.default_pass.clone(), &self.worldmvp_layout.borrow());
   }
 
-  pub fn get_winsize(&self) -> (u32, u32) {
-    (self.viewport.rect.w as u32, self.viewport.rect.h as u32)
-  }
 }
-
-pub fn create_swapchain<B: gfx_hal::Backend>(
-  winsize: Extent2D,
-  mut surface: &mut B::Surface,
-  adapter: &mut Adapter<B>,
-  device: &RefCell<B::Device>,
-  may_format: Option<f::Format>,
-) -> (
-  B::Swapchain,
-  f::Format,
-  Vec<(B::Image, B::ImageView)>,
-  gfx_hal::image::Extent,
-) {
-  //let (caps, formats, _present_modes) = surface.compatibility(&mut adapter.physical_device);
-  let caps = surface.capabilities(&adapter.physical_device);
-  let formats = surface.supported_formats(&adapter.physical_device);
-  let format = may_format.or_else(|| {
-    let format = formats.map_or(f::Format::Rgba8Srgb, |formats| {
-      formats
-        .iter()
-        .find(|format| format.base_format().1 == ChannelType::Srgb)
-        .map(|format| *format)
-        .unwrap_or(formats[0])
-    });
-    Some(format)
-  });
-  let swap_config = SwapchainConfig::from_caps(&caps, format.unwrap(), winsize);
-  let extent = swap_config.extent.to_extent();
-  let (swapchain, backbuffer) = unsafe {
-    device
-      .borrow()
-      .create_swapchain(&mut surface, swap_config, None)
-  }
-  .expect("Can't create swapchain");
-  println!("len:{}", backbuffer.len());
-  let pairs = backbuffer
-    .into_iter()
-    .map(|image| unsafe {
-      let rtv = device
-        .borrow()
-        .create_image_view(
-          &image,
-          i::ViewKind::D2,
-          format.unwrap(),
-          Swizzle::NO,
-          COLOR_RANGE.clone(),
-        )
-        .unwrap();
-      (image, rtv)
-    })
-    .collect::<Vec<_>>();
-
-  (swapchain, format.unwrap(), pairs, extent)
-}
-
-pub const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
-  aspects: f::Aspects::COLOR,
-  levels: 0..1,
-  layers: 0..1,
-};

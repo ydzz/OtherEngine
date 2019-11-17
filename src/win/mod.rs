@@ -33,11 +33,11 @@ impl<T> Win<T> where T:IWinCall {
    let event_loop = EventLoop::new();
    Win {event_loop : Some(event_loop),window : None,
         title:String::from("winit"), 
-        winsize : Extent2D {width: 174,height: 166},win_call:None }
+        winsize : Extent2D {width: 1024,height: 768},win_call:None }
  }
 
  #[cfg(feature = "gl")]
- pub fn init<B:gfx_hal::Backend>(&mut self) -> GPBackend<back::Backend> {
+ pub fn init(&mut self) -> GPBackend<back::Backend> {
    let wb = winit::window::WindowBuilder::new()
         .with_min_inner_size(winit::dpi::LogicalSize::new(1.0, 1.0))
         .with_inner_size(winit::dpi::LogicalSize::new(self.winsize.width as f64,self.winsize.height as f64))
@@ -63,12 +63,13 @@ pub fn init(&mut self) -> GPBackend<back::Backend> {
         .with_inner_size(winit::dpi::LogicalSize::new(self.winsize.width as f64,self.winsize.height as f64))
         .with_title(self.title.clone());
   let window = wb.build(self.event_loop.as_ref().unwrap()).expect("init window fail");
-  self.window = Some(window);
+  
   let instance = back::Instance::create(self.title.as_str(), 1).expect("Failed to create an instance!");
   let surface = unsafe {
-    instance.create_surface(self.window.as_ref().unwrap()).expect("Failed to create a surface!")
+    instance.create_surface(&window).unwrap()
   };
   let mut adapters = instance.enumerate_adapters();
+  self.window = Some(window);
   GPBackend {surface : surface , adapter:adapters.remove(0)}
 }
 

@@ -43,31 +43,32 @@ impl Game {
         map.insert(String::from("Height"),ViewValue::Int(100) );
         self.view_tree = Some(image(map));
 
-        let test_node = Rc::new(create_test_node(&tex_rc,&self.graphics,10f32));
-        self.render_list.push(test_node);
+        let mut mat = Material::new(self.graphics.borrow().shader_store.borrow().get_shader("UI"),&self.graphics.borrow().device);
+        mat.set_main_texture(tex_rc.clone());
+        let rc_mat = Rc::new(mat);
+        for idx in 0..500 {
+            let test_node = Rc::new(create_test_node(&tex_rc,&self.graphics,idx as f32,rc_mat.clone()));
+            self.render_list.push(test_node);
+        }
+
+       
     }
 
     pub fn update(&self) {
         self.graphics.borrow_mut().draw(&self.camera_list, &self.render_list);
     }
 
-    pub fn resize_view(&self, size: Extent2D) {
-        self.graphics.borrow_mut().recreate_swapchain(size);
-    }
 }
 
 
 
-fn create_test_node(texture:&Rc<Texture>,graphics:&RefCell<Graphics>,xoffset:f32) -> RenderNode {
-    
+fn create_test_node(texture:&Rc<Texture>,graphics:&RefCell<Graphics>,xoffset:f32,mat:Rc< Material>) -> RenderNode {
     let rc_mesh = Rc::clone(&graphics.borrow().mesh_store.quad);
-
-    let mut mat = Material::new(graphics.borrow().shader_store.get_shader("UI"),&graphics.borrow().device);
-    mat.set_main_texture(texture.clone());
     let mut node_t = Transform::identity();
     node_t.set_scale(Vector3::new(300f32,300f32,1f32));
     node_t.set_x(xoffset);
-    RenderNode::new(graphics,&node_t, &rc_mesh,&Rc::new(mat))
+    node_t.set_z(0f32);
+    RenderNode::new(graphics,&node_t, &rc_mesh,&mat)
 }
 
 impl IWinCall for Game {

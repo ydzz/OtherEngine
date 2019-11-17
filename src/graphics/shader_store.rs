@@ -52,7 +52,7 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
                     stage_flags: pso::ShaderStageFlags::FRAGMENT,
                     immutable_samplers: false,
       }
-    ]);
+    ],10);
     let pipeline_layout = unsafe {
       self.device.borrow().create_pipeline_layout(
           vec![mvp_layout.raw_layout(),desc_set_layout.raw_layout()],
@@ -145,5 +145,10 @@ impl<B> ShaderStore<B> where B: gfx_hal::Backend
       pipelines: vec![pipeline],
       queue_type: QueueType::Geometry,
     }
+  }
+
+  pub fn re_create_render_pass(&mut self,pass:Rc<RenderPass<B>>,mvp_layout:&DescSetLayout<B>) {
+    self.render_pass = pass;
+    self.init_builtin_shader(mvp_layout);
   }
 }
